@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Empire — Console de pilotage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Console de trading nocturne : graphite bleuté, accent laiton. Layout : barre de commande fixe + navigation latérale + grille de panneaux. */
+:root{
+  --bg:#0c1016; --panel:#141a22; --panel2:#1a222c; --line:#263240; --ink:#dde4ec; --muted:#8593a3;
+  --accent:#d6a94e; --accent2:#f0cd84; --good:#3fb97a; --bad:#ef5d5d; --warn:#e3a33b; --info:#5aa7e6;
+  --display:"Bodoni Moda",Didot,Georgia,serif; --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--body)}
+button,input,select,textarea{font:inherit;color:inherit}
+h2{font-size:15px;font-weight:600;margin:0 0 12px;letter-spacing:.2px;text-wrap:balance}
+h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:16px 0 8px}
+.muted{color:var(--muted)} .small{font-size:12px}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.nowrap{white-space:nowrap}
+/* top bar */
+#top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;padding:10px 18px;background:#0a0d12f2;border-bottom:1px solid var(--line);backdrop-filter:blur(6px);flex-wrap:wrap}
+.brand{font-family:var(--display);font-size:22px;letter-spacing:4px;color:var(--accent);display:flex;flex-direction:column;line-height:1}
+.brand span{font-family:var(--body);font-size:11px;letter-spacing:.4px;color:var(--muted);margin-top:4px}
+.tdate{display:flex;flex-direction:column;min-width:190px} .tdate b{font-weight:600;text-transform:capitalize} .tdate span{font-size:12px;color:var(--muted)}
+.kpis{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+.k{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 10px;display:flex;flex-direction:column;min-width:118px}
+.k span{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)} .k b{font-family:var(--mono);font-size:15px;font-weight:500} .k i{font-style:normal;font-size:11px;font-family:var(--mono)}
+.adv{display:flex;gap:6px}
+/* layout */
+#wrap{display:grid;grid-template-columns:200px 1fr;min-height:calc(100% - 60px)}
+#nav{border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:2px;position:sticky;top:62px;align-self:start;height:calc(100vh - 62px);overflow-y:auto}
+.nv{background:none;border:0;text-align:left;padding:9px 12px;border-radius:6px;color:var(--muted);cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.nv:hover{background:var(--panel);color:var(--ink)} .nv.on{background:var(--panel2);color:var(--accent2);box-shadow:inset 2px 0 0 var(--accent)}
+.badge{background:var(--bad);color:#fff;border-radius:10px;font-size:11px;padding:0 7px}
+.navfoot{margin-top:auto;display:flex;flex-direction:column;gap:6px}
+#main{padding:18px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.grid{display:grid;gap:16px} .g2{grid-template-columns:1fr 1fr} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)} .tight{gap:10px}
+.span2{grid-column:span 2}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.card.alert{border-color:var(--warn);background:linear-gradient(180deg,#2a2112,var(--panel) 60%)}
+.card.empty{text-align:center;padding:40px}
+/* controls */
+button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{border-color:var(--accent)} button:disabled{opacity:.4;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,.cdot:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+button.primary{background:var(--accent);color:#17120a;border-color:var(--accent);font-weight:600} button.primary:hover{background:var(--accent2)}
+button.danger{border-color:#5a2a2a;color:#ff9b9b} button.ghost{background:none}
+button.big{padding:10px 18px;font-size:15px} button.mini{padding:3px 8px;font-size:12px;margin:1px}
+input,select,textarea{background:#0e131a;border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%}
+input[type=range]{padding:0;accent-color:var(--accent)} input.qty{width:90px;padding:3px 6px;font-size:12px;display:inline-block}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+.row{display:flex;gap:8px;align-items:center;margin-top:8px} .row.wrap{flex-wrap:wrap} .row.end{justify-content:flex-end} .row>div{flex:1}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:10px;flex-wrap:wrap} .seg button{border:0;border-radius:0;background:none;color:var(--muted)} .seg button.on{background:var(--panel2);color:var(--accent2)}
+.actions{display:flex;flex-direction:column;gap:6px;margin:10px 0} .actions button{text-align:left}
+/* tables */
+.t{width:100%;border-collapse:collapse} .t td,.t th{padding:6px 8px;border-bottom:1px solid #1f2935;vertical-align:middle} .t th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:500;text-align:left}
+.t.compact td{padding:4px 6px;font-size:12.5px} .t tr.tot td{border-top:1px solid var(--line);font-weight:600} .t tr.click{cursor:pointer} .t tr.click:hover td{background:var(--panel2)}
+.t.rank tr.me td{background:#2a2312} .scroll{overflow-x:auto} .cmp th{text-align:right}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px dashed #212c38} .kv span{color:var(--muted)} .kv b{font-family:var(--mono);font-weight:500;text-align:right}
+.kv.big b{font-size:16px}
+.stat{background:var(--panel2);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:4px} .stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px} .stat b{font-family:var(--mono);font-weight:500;font-size:16px}
+.bar{display:block;height:6px;background:#0c1117;border-radius:3px;overflow:hidden;min-width:60px} .bar i{display:block;height:100%;background:var(--accent)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);background:#0e131a;white-space:nowrap}
+.pill.good{color:var(--good);border-color:#24553c} .pill.bad{color:var(--bad);border-color:#5a2a2a} .pill.warn{color:var(--warn);border-color:#5c4320} .pill.info{color:var(--info);border-color:#244a6b}
+.warnline{color:var(--warn);font-size:13px}
+/* charts */
+.chart{width:100%;height:auto;display:block} .chart .grid,.map .grid{stroke:#1f2935} .chart .ax{fill:var(--muted);font:11px var(--mono)}
+.spark{display:block;max-width:100%}
+/* feed */
+.feed{list-style:none;padding:0;margin:0 0 10px;font-size:13px} .feed li{padding:6px 0 6px 10px;border-left:2px solid var(--line);margin-bottom:2px} .feed li span{color:var(--muted);font-family:var(--mono);font-size:11px;margin-right:8px}
+.feed li.bad{border-color:var(--bad)} .feed li.good{border-color:var(--good)} .feed li.info{border-color:#3a4a5c}
+.feed.long li{padding:5px 0 5px 10px}
+.decision{background:#0e131a;border:1px solid #4a3a1c;border-radius:8px;padding:12px;margin-bottom:10px} .decision .dh{font-weight:600;display:flex;justify-content:space-between} .decision p{margin:6px 0}
+/* map */
+.mapwrap{overflow-x:auto} .map{width:100%;min-width:600px;height:auto;background:radial-gradient(ellipse at 40% 40%,#14202d,#0d131a);border-radius:8px}
+.cdot{cursor:pointer} .cdot circle{fill:#2b3b4d;stroke:#5c7590;stroke-width:1} .cdot circle.own{fill:var(--accent);stroke:var(--accent2)} .cdot:hover circle{stroke:var(--accent2);stroke-width:2}
+.cdot text{fill:var(--ink);font:600 12px var(--body)} .cdot text.sub{fill:var(--muted);font:400 10.5px var(--mono)}
+/* opportunities */
+.opps{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.opp{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:2px}
+.oh{display:flex;gap:10px;margin-bottom:6px} .oh b{display:block} .ico{font-size:22px;line-height:1}
+/* business cards */
+.bizgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.bcard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column} .bcard.click{cursor:pointer} .bcard.click:hover{border-color:var(--accent)}
+.bb{padding:12px;display:flex;flex-direction:column;gap:2px} .bb>b{font-size:14.5px}
+.art{display:block;width:100%;height:auto;max-width:100%}
+.hero{border-radius:8px;overflow:hidden;margin-bottom:14px;max-height:300px} .hero .art{max-height:300px;object-fit:cover}
+.dirbox{background:var(--panel2);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.staff td{font-size:13px}
+.execgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px} .exec{background:var(--panel2);border-radius:8px;padding:12px} .exec h3{margin-top:0;color:var(--accent2)}
+.score{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap} .score b{font-family:var(--mono);font-size:30px;font-weight:500} .score .bar{flex-basis:100%}
+.list{list-style:none;padding:0;margin:0} .list li{padding:5px 0;border-bottom:1px dashed #212c38} .list li.click{cursor:pointer} .list li.click:hover{color:var(--accent2)}
+.notes{padding-left:18px;margin:10px 0;font-size:12.5px;color:#b9c4cf} .notes li{margin-bottom:4px}
+.sheets{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px} details{background:var(--panel2);border-radius:8px;padding:8px 10px} summary{cursor:pointer;font-weight:600}
+/* quote */
+.quote{border-radius:8px;padding:10px;margin:10px 0;border:1px solid var(--line)} .quote.ok{border-color:#24553c;background:#10201a} .quote.ko{border-color:#5a2a2a;background:#221315}
+.qh{font-weight:600;margin-bottom:6px} .reasons{margin:8px 0 0;padding-left:18px;color:#ff9b9b;font-size:12.5px}
+.estbox{background:#0e131a;border-radius:8px;padding:10px;margin-top:10px}
+/* modal & toast */
+#modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto} #modal.open{display:flex}
+.mbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(560px,100%)} .mbox.wide{width:min(980px,100%)}
+.help p{max-width:72ch}
+textarea{font-family:var(--mono);font-size:11px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(30px);background:var(--panel2);border:1px solid var(--accent);padding:10px 16px;border-radius:8px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%)} #toast.bad{border-color:var(--bad)}
+/* start */
+.startbox{max-width:640px;margin:6vh auto;padding:28px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.logo{font-family:var(--display);font-size:54px;letter-spacing:12px;color:var(--accent);line-height:1}
+.lede{font-size:15px;color:#c2ccd6;max-width:62ch}
+.form{display:grid;grid-template-columns:180px 1fr;gap:8px 12px;align-items:center;margin:18px 0} .form label{margin:0}
+@media (max-width:1100px){.g3{grid-template-columns:1fr 1fr}.span2{grid-column:span 2}.g4{grid-template-columns:1fr 1fr}}
+@media (max-width:760px){#wrap{grid-template-columns:1fr}#nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}.navfoot{flex-direction:row;margin:0}
+  .g2,.g3{grid-template-columns:1fr}.span2{grid-column:auto}.form{grid-template-columns:1fr}#top{position:static}.kpis .k{min-width:100px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top"></header>
+  <div id="wrap"><nav id="nav" aria-label="Navigation"></nav><main id="main"></main></div>
+</div>
+<div id="start"></div>
+<div id="modal"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+'use strict';
+/* ==========================================================================
+   EMPIRE — moteur de simulation
+   ========================================================================== */
+const R = Math.random;
+const rnd = (a, b) => a + (b - a) * R();
+const ri = (a, b) => Math.floor(a + (b - a + 1) * R());
+const pick = a => a[Math.floor(R() * a.length)];
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+function gauss() { let u = 0, v = 0; while (!u) u = R(); while (!v) v = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+function poisson(l) { if (l <= 0) return 0; if (l > 30) return Math.max(0, Math.round(l + Math.sqrt(l) * gauss())); const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= R(); } while (p > L); return k - 1; }
+const uid = () => Math.random().toString(36).slice(2, 10);
+function eur(n) {
+  if (n == null || isNaN(n)) return '—';
+  const s = n < 0 ? '−' : ''; n = Math.abs(n);
+  if (n >= 1e9) return s + (n / 1e9).toFixed(2).replace('.', ',') + ' Md€';
+  if (n >= 1e6) return s + (n / 1e6).toFixed(2).replace('.', ',') + ' M€';
+  if (n >= 1e4) return s + Math.round(n / 1e3).toLocaleString('fr-FR') + ' k€';
+  return s + Math.round(n).toLocaleString('fr-FR') + ' €';
+}
+const pct = (x, d = 1) => (x * 100).toFixed(d).replace('.', ',') + ' %';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const START = Date.UTC(2027, 0, 1);
+const dateOf = d => new Date(START + d * 864e5);
+const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+const fdate = d => { const t = dateOf(d); return `${JOURS[t.getUTCDay()]} ${t.getUTCDate()} ${MOIS[t.getUTCMonth()]} ${t.getUTCFullYear()}`; };
+const sdate = d => { const t = dateOf(d); return `${String(t.getUTCDate()).padStart(2, '0')}/${String(t.getUTCMonth() + 1).padStart(2, '0')}/${t.getUTCFullYear()}`; };
+
+/* ---------------- Juridictions (valeurs simplifiées inspirées des régimes 2025-2026) */
+const COUNTRIES = {
+  FR: { n: 'France', f: '🇫🇷', cur: 'EUR', is: .25, cs: .42, tva: .20, div: .30, wt: { r: .01, th: 1.3e6, re: true }, mut: .075, fmut: .05, ptax: .010, bur: 1.5, spr: .006, sev: 2, wage: 1, night: 1.3, build: 2300, yield: .04, strike: 2,
+    notes: ['Flat tax de 30 % sur les dividendes', 'IFI : 1 % sur le patrimoine immobilier net au-delà de 1,3 M€', 'Exit tax (30 %) sur les plus-values latentes en cas de départ hors UE avec plus de 800 k€ de titres', 'Charges patronales parmi les plus lourdes d\'Europe (~42 %)', 'Licenciements coûteux, prud\'hommes fréquents, grèves', 'Frais de mutation immobiliers ~7,5 % — procédures d\'expulsion longues (trêve hivernale)'] },
+  MC: { n: 'Monaco', f: '🇲🇨', cur: 'EUR', is: 0, cs: .38, tva: .20, div: 0, wt: null, mut: .065, fmut: .075, ptax: 0, bur: 1.2, spr: .003, sev: 1.5, wage: 1.15, night: .9, build: 7000, yield: .025, strike: .3, ltvCap: .6,
+    notes: ['Aucun impôt sur le revenu ni sur la fortune pour les résidents', 'Dividendes non imposés', 'IS nul pour les sociétés réalisant ≥ 75 % de leur CA à Monaco', 'Résidence : logement à Monaco + 500 k€ déposés dans une banque monégasque', 'Convention de 1963 : les ressortissants français résidant à Monaco restent imposés en France', 'Immobilier le plus cher du monde, LTV bancaire limitée à 60 %'] },
+  UK: { n: 'Royaume-Uni', f: '🇬🇧', cur: 'GBP', is: .25, cs: .15, tva: .20, div: .3935, wt: null, mut: .10, fmut: 0, ptax: .005, bur: 1.0, spr: .009, sev: .5, wage: 1.05, night: 1.0, build: 3000, yield: .045, strike: .8,
+    notes: ['Dividendes jusqu\'à 39,35 %', 'Stamp Duty élevé sur l\'immobilier (jusqu\'à 12 % + surtaxes)', 'Régime « non-dom » aboli en 2025', 'Licenciement peu coûteux', 'Exposition au risque de change GBP/EUR'] },
+  DE: { n: 'Allemagne', f: '🇩🇪', cur: 'EUR', is: .30, cs: .21, tva: .19, div: .26375, wt: null, mut: .06, fmut: 0, ptax: .0035, bur: 1.4, spr: 0, sev: 1.5, wage: 1.05, night: .9, build: 3000, yield: .035, strike: 1,
+    notes: ['IS + taxe professionnelle ≈ 30 %', 'Grunderwerbsteuer 3,5 à 6,5 % selon le Land', 'Taux d\'emprunt de référence les plus bas de la zone euro', 'Permis de construire lents'] },
+  ES: { n: 'Espagne', f: '🇪🇸', cur: 'EUR', is: .25, cs: .31, tva: .21, div: .28, wt: { r: .015, th: 7e5 }, mut: .08, fmut: 0, ptax: .006, bur: 1.4, spr: .007, sev: 1.5, wage: .75, night: .8, build: 1700, yield: .05, strike: 1.2,
+    notes: ['Impuesto sobre el Patrimonio : ~1,5 % au-delà de 700 k€', 'Madrid : impôt sur la fortune bonifié à 100 % (mais impôt de solidarité au-delà de 3 M€)', 'ITP (mutation) 6 à 10 % selon la région', 'Horaires de nuit très encadrés à Barcelone'] },
+  IT: { n: 'Italie', f: '🇮🇹', cur: 'EUR', is: .279, cs: .30, tva: .22, div: .26, wt: null, mut: .09, fmut: .03, ptax: .008, bur: 1.9, spr: .012, sev: 2.5, wage: .8, night: 1.1, build: 2000, yield: .045, strike: 1.5, flat: 200000,
+    notes: ['IRES 24 % + IRAP 3,9 %', 'Régime forfaitaire des nouveaux résidents : 200 000 €/an au lieu de l\'impôt sur les revenus étrangers', 'Bureaucratie très lente : permis longs, refus fréquents', 'Spread BTP/Bund : crédit plus cher'] },
+  AT: { n: 'Autriche', f: '🇦🇹', cur: 'EUR', is: .23, cs: .21, tva: .20, div: .275, wt: null, mut: .046, fmut: 0, ptax: .002, bur: 1.2, spr: .002, sev: 1.5, wage: 1.0, night: .9, build: 2800, yield: .035, strike: .4,
+    notes: ['IS 23 %', 'Dividendes 27,5 %', 'Paix sociale : très peu de grèves'] },
+  PL: { n: 'Pologne', f: '🇵🇱', cur: 'PLN', is: .19, cs: .20, tva: .23, div: .19, wt: null, mut: .02, fmut: 0, ptax: .001, bur: 1.3, spr: .015, sev: 1, wage: .45, night: .8, build: 1300, yield: .06, strike: .5,
+    notes: ['IS 19 % (9 % pour les petites sociétés)', 'Main-d\'œuvre bon marché', 'Rendements locatifs élevés', 'Risque de change PLN'] },
+  HU: { n: 'Hongrie', f: '🇭🇺', cur: 'HUF', is: .09, cs: .13, tva: .27, div: .15, wt: null, mut: .04, fmut: 0, ptax: .003, bur: 1.4, spr: .02, sev: 1, wage: .4, night: .8, build: 1100, yield: .06, strike: .3,
+    notes: ['IS à 9 % : le plus bas de l\'UE', 'TVA à 27 % : la plus haute de l\'UE', 'Forint volatil, taux d\'intérêt élevés'] },
+  CZ: { n: 'Tchéquie', f: '🇨🇿', cur: 'CZK', is: .21, cs: .34, tva: .21, div: .15, wt: null, mut: 0, fmut: 0, ptax: .001, bur: 1.2, spr: .01, sev: 1, wage: .5, night: .9, build: 1500, yield: .045, strike: .3,
+    notes: ['Pas de droits de mutation immobiliers (abolis en 2020)', 'Dividendes 15 %', 'Charges sociales élevées (~34 %)'] },
+  RO: { n: 'Roumanie', f: '🇷🇴', cur: 'RON', is: .16, cs: .0225, tva: .21, div: .16, wt: null, mut: .03, fmut: 0, ptax: .002, bur: 1.6, spr: .025, sev: .8, wage: .35, night: .9, build: 1000, yield: .07, strike: .4,
+    notes: ['Charges patronales quasi nulles (2,25 %, transférées au salarié)', 'Dividendes 16 % (2026)', 'Rendements locatifs parmi les plus hauts d\'Europe', 'Crédit cher'] },
+  TR: { n: 'Turquie', f: '🇹🇷', cur: 'TRY', is: .25, cs: .2075, tva: .20, div: .15, wt: null, mut: .04, fmut: 0, ptax: .002, bur: 1.5, spr: .08, sev: 1.5, wage: .3, night: 1.0, build: 800, yield: .08, strike: .6, ltvCap: .5,
+    notes: ['Inflation élevée et livre turque en dépréciation continue', 'Taux d\'emprunt très élevés (prime pays ~8 %)', 'LTV bancaire limitée à 50 %', 'Coûts de construction très bas'] },
+  NL: { n: 'Pays-Bas', f: '🇳🇱', cur: 'EUR', is: .258, cs: .20, tva: .21, div: .245, wt: null, mut: .104, fmut: 0, ptax: .001, bur: 1.1, spr: 0, sev: 1, wage: 1.05, night: .8, build: 2800, yield: .04, strike: .4,
+    notes: ['Droits de mutation 10,4 % pour les investisseurs', 'Administration efficace', 'Box 2 : dividendes 24,5 à 31 %'] },
+  BE: { n: 'Belgique', f: '🇧🇪', cur: 'EUR', is: .25, cs: .27, tva: .21, div: .30, wt: null, mut: .125, fmut: 0, ptax: .01, bur: 1.4, spr: .005, sev: 2.5, wage: 1.05, night: .9, build: 2200, yield: .045, strike: 1.6,
+    notes: ['Droits d\'enregistrement jusqu\'à 12,5 %', 'Préavis de licenciement longs', 'Grèves nationales fréquentes'] },
+  PT: { n: 'Portugal', f: '🇵🇹', cur: 'EUR', is: .20, cs: .2375, tva: .23, div: .28, wt: null, mut: .075, fmut: 0, ptax: .004, bur: 1.6, spr: .007, sev: 1.5, wage: .55, night: .9, build: 1700, yield: .05, strike: .7,
+    notes: ['Régime NHR supprimé (remplacé par l\'IFICI, ciblé)', 'Bureaucratie lente', 'Immobilier dynamique à Lisbonne'] },
+  CH: { n: 'Suisse', f: '🇨🇭', cur: 'CHF', is: .196, cs: .13, tva: .081, div: .20, wt: { r: .004, th: 2e5 }, mut: .01, fmut: 0, ptax: .001, bur: .9, spr: -.006, sev: .5, wage: 1.7, night: .7, build: 4000, yield: .03, strike: .1, ltvCap: .8,
+    notes: ['Impôt cantonal sur la fortune (~0,4 %)', 'Taux d\'intérêt les plus bas d\'Europe (franc suisse)', 'TVA à 8,1 %', 'Salaires très élevés', 'Hors UE : exit tax française exigible'] },
+  GR: { n: 'Grèce', f: '🇬🇷', cur: 'EUR', is: .22, cs: .2179, tva: .24, div: .05, wt: null, mut: .031, fmut: 0, ptax: .003, bur: 1.7, spr: .01, sev: 1.5, wage: .5, night: 1.0, build: 1400, yield: .055, strike: 1.2,
+    notes: ['Dividendes taxés à 5 %', 'Golden Visa contre investissement immobilier', 'Saison touristique longue'] },
+};
+const CO = c => COUNTRIES[c];
+const EU = new Set(['FR', 'DE', 'ES', 'IT', 'AT', 'PL', 'HU', 'CZ', 'RO', 'NL', 'BE', 'PT', 'GR']);
+const FXP = { GBP: { v: .0045, d: 0 }, CHF: { v: .0035, d: .00004 }, PLN: { v: .005, d: 0 }, HUF: { v: .006, d: -.00008 }, CZK: { v: .004, d: 0 }, RON: { v: .002, d: -.00004 }, TRY: { v: .008, d: -.0009 } };
+
+/* ---------------- 22 villes */
+const CITIES = [
+  { id: 'londres', n: 'Londres', c: 'UK', pop: 9.6, m2: 13500, w: 1.4, t: 1.5, ni: 1.4, coast: 0, lat: 51.5, lon: -0.13 },
+  { id: 'paris', n: 'Paris', c: 'FR', pop: 11.3, m2: 9800, w: 1.3, t: 1.6, ni: 1.2, coast: 0, lat: 48.86, lon: 2.35 },
+  { id: 'monaco', n: 'Monaco', c: 'MC', pop: .04, m2: 52000, w: 3.0, t: 1.4, ni: 1.3, coast: 1, lat: 43.74, lon: 7.42 },
+  { id: 'nice', n: 'Nice', c: 'FR', pop: 1.0, m2: 5900, w: 1.15, t: 1.3, ni: .9, coast: 1, lat: 43.70, lon: 7.27 },
+  { id: 'berlin', n: 'Berlin', c: 'DE', pop: 3.9, m2: 5300, w: 1.0, t: 1.1, ni: 1.6, coast: 0, lat: 52.52, lon: 13.40 },
+  { id: 'munich', n: 'Munich', c: 'DE', pop: 1.6, m2: 9000, w: 1.35, t: 1.0, ni: .9, coast: 0, lat: 48.14, lon: 11.58 },
+  { id: 'hambourg', n: 'Hambourg', c: 'DE', pop: 1.9, m2: 6000, w: 1.2, t: .8, ni: 1.0, coast: 0, lat: 53.55, lon: 9.99 },
+  { id: 'madrid', n: 'Madrid', c: 'ES', pop: 6.8, m2: 5200, w: 1.0, t: 1.1, ni: 1.3, coast: 0, lat: 40.42, lon: -3.70 },
+  { id: 'barcelone', n: 'Barcelone', c: 'ES', pop: 5.6, m2: 5000, w: 1.0, t: 1.4, ni: 1.4, coast: 1, lat: 41.39, lon: 2.17 },
+  { id: 'rome', n: 'Rome', c: 'IT', pop: 4.3, m2: 3900, w: .95, t: 1.5, ni: .9, coast: 0, lat: 41.90, lon: 12.50 },
+  { id: 'milan', n: 'Milan', c: 'IT', pop: 3.2, m2: 5600, w: 1.2, t: 1.0, ni: 1.1, coast: 0, lat: 45.46, lon: 9.19 },
+  { id: 'vienne', n: 'Vienne', c: 'AT', pop: 2.0, m2: 6200, w: 1.15, t: 1.0, ni: .8, coast: 0, lat: 48.21, lon: 16.37 },
+  { id: 'varsovie', n: 'Varsovie', c: 'PL', pop: 3.1, m2: 4200, w: .8, t: .6, ni: .9, coast: 0, lat: 52.23, lon: 21.01 },
+  { id: 'budapest', n: 'Budapest', c: 'HU', pop: 1.75, m2: 3100, w: .65, t: .9, ni: 1.1, coast: 0, lat: 47.50, lon: 19.04 },
+  { id: 'prague', n: 'Prague', c: 'CZ', pop: 1.4, m2: 5000, w: .85, t: 1.1, ni: 1.0, coast: 0, lat: 50.08, lon: 14.44 },
+  { id: 'bucarest', n: 'Bucarest', c: 'RO', pop: 2.2, m2: 2000, w: .6, t: .5, ni: 1.0, coast: 0, lat: 44.43, lon: 26.10 },
+  { id: 'istanbul', n: 'Istanbul', c: 'TR', pop: 15.7, m2: 1600, w: .55, t: 1.4, ni: 1.1, coast: 1, lat: 41.01, lon: 28.98 },
+  { id: 'amsterdam', n: 'Amsterdam', c: 'NL', pop: 2.5, m2: 7800, w: 1.3, t: 1.3, ni: 1.3, coast: 0, lat: 52.37, lon: 4.90 },
+  { id: 'bruxelles', n: 'Bruxelles', c: 'BE', pop: 2.1, m2: 3600, w: 1.1, t: .8, ni: .9, coast: 0, lat: 50.85, lon: 4.35 },
+  { id: 'lisbonne', n: 'Lisbonne', c: 'PT', pop: 2.9, m2: 5400, w: .85, t: 1.2, ni: 1.1, coast: 1, lat: 38.72, lon: -9.14 },
+  { id: 'zurich', n: 'Zurich', c: 'CH', pop: 1.4, m2: 16500, w: 1.8, t: .8, ni: .9, coast: 0, lat: 47.38, lon: 8.54 },
+  { id: 'athenes', n: 'Athènes', c: 'GR', pop: 3.6, m2: 2700, w: .65, t: 1.2, ni: 1.1, coast: 1, lat: 37.98, lon: 23.73 },
+];
+const CITY = Object.fromEntries(CITIES.map(c => [c.id, c]));
+const cityPrice = ci => clamp(.45 + .45 * ci.w, .6, 1.9);
+
+/* ---------------- Secteurs */
+const SECTORS = {
+  fastfood: { n: 'Restauration rapide', full: 'Franchise de restauration rapide', ico: '🍔', mult: 5.5, rent: 22000, el: 1.6, beta: .4, cogs: .30, royalty: .08, fg: .06, ins: .004,
+    w: { pop: .6, tour: .25, wealth: .15 }, brands: ['BurgerNova', 'Crispy Town', 'Wrap Express', 'Pizzaïolo Rapido', 'Golden Fries'],
+    roles: { entretien: ['Agent d\'entretien', 1, 1900, 1], equipier: ['Équipier', 12, 1950, 3], cuisinier: ['Cuisinier', 4, 2250, 2], manager: ['Manager de salle', 2, 3000, 2] } },
+  nightclub: { n: 'Établissement de nuit', full: 'Club / établissement de nuit', ico: '🍸', mult: 4, rent: 18000, el: 1.2, beta: .9, cogs: .22, royalty: 0, fg: .10, ins: .006,
+    w: { night: .5, pop: .2, wealth: .3 }, brands: ['Le Velvet', 'Club Onyx', 'Neon Garden', 'La Nuit Blanche', 'Studio 9', 'Le Baron Rouge'],
+    roles: { entretien: ['Agent d\'entretien', 2, 1900, 1], barman: ['Barman', 8, 2300, 3], securite: ['Agent de sécurité', 6, 2400, 3], dj: ['DJ résident', 1, 4500, 2], hote: ['Hôte / hôtesse', 4, 2100, 1] } },
+  yacht: { n: 'Location de yachts', full: 'Société de charter de yachts', ico: '🛥️', mult: 2, rent: 0, el: .8, beta: 1.8, cogs: .20, royalty: 0, fg: .08, ins: .012, coast: true,
+    w: { wealth: .5, tour: .5 }, brands: ['Riviera Charters', 'Blue Horizon Yachting', 'Azure Fleet', 'Mare Nostrum Yachts'],
+    roles: { entretien: ['Agent d\'entretien', 1, 1900, 1], commercial: ['Commercial charter', 1, 3500, 2], mecanicien: ['Mécanicien marine', 1, 3200, 2] } },
+  cardealer: { n: 'Concession auto de luxe', full: 'Concession automobile de luxe', ico: '🏎️', mult: 5, rent: 30000, el: 4, beta: 2.0, cogs: 0, royalty: 0, fg: .01, ins: .005,
+    w: { wealth: .8, pop: .2 }, brands: ['Prestige Motors', 'Grand Tourisme Automobiles', 'Élite Cars', 'Stradale Premium'],
+    roles: { entretien: ['Agent d\'entretien', 1, 1900, 1], vendeur: ['Vendeur', 4, 3800, 3], mecanicien: ['Mécanicien', 3, 2900, 2], preparateur: ['Préparateur', 1, 2100, 1], admin: ['Assistant administratif', 1, 2500, 1] } },
+  hotel: { n: 'Hôtel de luxe', full: 'Hôtel 5 étoiles (murs + fonds)', ico: '🏨', mult: 10, rent: 0, el: 1.1, beta: 1.0, cogs: .25, royalty: 0, fg: .12, ins: .003,
+    w: { tour: .7, wealth: .3 }, brands: ['Le Majestic', 'Grand Hôtel Lumière', 'Palais Ambassador', 'The Regent', 'Villa Aurora'],
+    roles: { entretien: ['Femme / valet de chambre', 6, 1950, 2], reception: ['Réceptionniste', 4, 2300, 2], concierge: ['Concierge', 1, 3200, 1], cuisinier: ['Cuisinier', 4, 2400, 2], serveur: ['Serveur', 5, 2100, 1] } },
+};
+const YACHTS = [
+  { n: 'Open 15 m', v: 650000, rate: 3200, crew: 1 },
+  { n: 'Flybridge 24 m', v: 2.8e6, rate: 11000, crew: 2 },
+  { n: 'Motor-yacht 35 m', v: 9.5e6, rate: 32000, crew: 5 },
+  { n: 'Superyacht 50 m', v: 30e6, rate: 90000, crew: 9 },
+];
+const SEASON_Y = [.02, .02, .05, .12, .3, .55, .75, .8, .45, .15, .03, .02];
+const SEASON_H = [.75, .8, .9, 1, 1.05, 1.1, 1.15, 1.1, 1.05, 1, .85, .9];
+const SEASON_HC = [.55, .6, .75, .95, 1.1, 1.3, 1.45, 1.45, 1.15, .9, .6, .65];
+
+/* ---------------- Immobilier */
+const RT = {
+  studios: { n: 'Résidence étudiante', f: .95, y: .012, mg: .28, b: .95, ico: '🎓' },
+  logements: { n: 'Immeuble résidentiel', f: 1.0, y: 0, mg: .2, b: 1, ico: '🏢' },
+  bureaux: { n: 'Immeuble de bureaux', f: .9, y: .008, mg: .15, b: 1.05, ico: '🏙️' },
+  luxe: { n: 'Résidence de luxe', f: 1.75, y: -.01, mg: .15, b: 2.0, ico: '🏛️' },
+  commerce: { n: 'Local commercial', f: .8, y: .02, mg: .12, b: .9, ico: '🏬' },
+};
+const luxeOK = ci => ci.w > 1.1 && (ci.coast || ci.w > 1.3);
+
+/* ---------------- Bourse */
+const STOCKS0 = [
+  ['AURL', 'Maison Aurèle', 'Luxe', 1.3, 420], ['EUBK', 'EuroBanque Group', 'Banque', 1.4, 58], ['TOTL', 'Totalis Énergie', 'Énergie', .8, 61],
+  ['SIEM', 'Siemar Industrie', 'Industrie', 1.1, 180], ['NOVA', 'Novacare Pharma', 'Santé', .6, 95], ['AERO', 'AeroNova', 'Aéronautique', 1.2, 150],
+  ['IMMO', 'Foncière Européenne', 'Immobilier', 1.0, 34], ['PRST', 'AutoPrestige', 'Automobile', 1.5, 72], ['TECH', 'TechLink Europe', 'Technologie', 1.6, 210],
+  ['TELC', 'TéléCom Union', 'Télécoms', .5, 14], ['ASSR', 'AssurEuropa', 'Assurance', .7, 44], ['FOOD', 'Gourmet Brands', 'Restauration', .7, 38],
+  ['YCHT', 'Riviera Marine', 'Nautisme', 1.7, 26], ['NGHT', 'Nocturne Entertainment', 'Loisirs', 1.4, 12], ['CNST', 'Bâtir Europe', 'BTP', 1.2, 55], ['SHIP', 'EuroLog Maritime', 'Transport', 1.3, 88],
+];
+
+/* ---------------- Luxe */
+const LUX = [
+  { cat: 'Montres', n: 'Rolex Submariner', p: 14000, g: .03, pr: 1 },
+  { cat: 'Montres', n: 'Patek Philippe Nautilus', p: 180000, g: .05, pr: 5 },
+  { cat: 'Montres', n: 'Richard Mille RM 011', p: 320000, g: .02, pr: 8 },
+  { cat: 'Voitures', n: 'Porsche 911 Turbo S', p: 260000, g: -.12, up: 3000, pr: 4 },
+  { cat: 'Voitures', n: 'Rolls-Royce Cullinan', p: 450000, g: -.14, up: 5000, pr: 8 },
+  { cat: 'Voitures', n: 'Ferrari SF90 Stradale', p: 520000, g: -.10, up: 6000, pr: 9 },
+  { cat: 'Voitures', n: 'Bugatti Chiron', p: 3200000, g: -.02, up: 30000, pr: 30 },
+  { cat: 'Voitures', n: 'Ferrari 250 GT (1962)', p: 9000000, g: .04, up: 15000, pr: 45, vol: .12 },
+  { cat: 'Aviation', n: 'Hélicoptère Airbus H130', p: 4200000, g: -.07, up: 60000, pr: 20 },
+  { cat: 'Aviation', n: 'Jet Embraer Phenom 300', p: 11000000, g: -.07, up: 120000, pr: 35 },
+  { cat: 'Aviation', n: 'Jet Gulfstream G700', p: 78000000, g: -.06, up: 600000, pr: 120 },
+  { cat: 'Yachts privés', n: 'Yacht privé 40 m', p: 22000000, g: -.06, up: 200000, pr: 70 },
+  { cat: 'Yachts privés', n: 'Gigayacht 90 m', p: 180000000, g: -.05, up: 1500000, pr: 300 },
+  { cat: 'Art', n: 'Toile d\'un maître contemporain', p: 2500000, g: .05, pr: 15, vol: .25 },
+  { cat: 'Art', n: 'Sculpture moderne', p: 800000, g: .04, pr: 6, vol: .2 },
+  { cat: 'Résidences', n: 'Appartement haussmannien, Paris 8e', p: 6500000, g: .02, up: 6000, pr: 18, city: 'paris' },
+  { cat: 'Résidences', n: 'Townhouse à Mayfair, Londres', p: 18000000, g: .02, up: 15000, pr: 40, city: 'londres' },
+  { cat: 'Résidences', n: 'Villa sur le lac de Zurich', p: 14000000, g: .025, up: 12000, pr: 35, city: 'zurich' },
+  { cat: 'Résidences', n: 'Villa à Saint-Jean-Cap-Ferrat', p: 35000000, g: .03, up: 40000, pr: 80, city: 'nice' },
+  { cat: 'Résidences', n: 'Penthouse au Carré d\'Or, Monaco', p: 28000000, g: .03, up: 25000, pr: 70, city: 'monaco' },
+];
+
+/* ---------------- Économie */
+const PH = {
+  boom: { n: 'Surchauffe', gdp: .035, conf: 1.12, mu: .16, vol: .15, next: { boom: .82, ralent: .18 } },
+  expansion: { n: 'Expansion', gdp: .02, conf: 1.03, mu: .09, vol: .14, next: { expansion: .88, boom: .06, ralent: .06 } },
+  ralent: { n: 'Ralentissement', gdp: .004, conf: .95, mu: -.02, vol: .2, next: { ralent: .76, recession: .12, expansion: .12 } },
+  recession: { n: 'Récession', gdp: -.02, conf: .82, mu: -.15, vol: .3, next: { recession: .8, reprise: .2 } },
+  reprise: { n: 'Reprise', gdp: .015, conf: .97, mu: .15, vol: .18, next: { reprise: .75, expansion: .25 } },
+};
+
+/* ---------------- Direction */
+const EXECS = {
+  pdg: { n: 'Directeur général (CEO)', base: 600000, d: 'Augmente la qualité de toutes vos entreprises (jusqu\'à +5 %).' },
+  daf: { n: 'Directeur financier (CFO)', base: 250000, d: 'Négocie vos taux (jusqu\'à −0,4 pt), relève le découvert autorisé.' },
+  fisc: { n: 'Directeur fiscal', base: 200000, d: 'Optimisation : réduit l\'IS (jusqu\'à −10 %). Un profil « agressif » optimise plus mais attire les contrôles.' },
+  drh: { n: 'DRH', base: 150000, d: 'Divise par deux les grèves et litiges prud\'homaux.' },
+  immo: { n: 'Directeur immobilier', base: 220000, d: 'Réduit retards et dépassements de budget des chantiers.' },
+  jur: { n: 'Directeur juridique', base: 200000, d: 'Réduit amendes et délais de permis, améliore vos chances au tribunal.' },
+};
+const FIRST = ['Antoine', 'Camille', 'Lukas', 'Sofia', 'Marco', 'Elena', 'James', 'Charlotte', 'Pablo', 'Lucía', 'Jan', 'Anna', 'Mehmet', 'Zeynep', 'Pieter', 'Inès', 'Matteo', 'Giulia', 'Tomasz', 'Katarzyna', 'Andrei', 'Ioana', 'Nikos', 'Eleni', 'Rui', 'Beatriz', 'Felix', 'Clara', 'Hugo', 'Léa'];
+const LAST = ['Martin', 'Bernard', 'Müller', 'Schneider', 'Rossi', 'Ferrari', 'García', 'Fernández', 'Smith', 'Taylor', 'Kowalski', 'Nowak', 'Popescu', 'Yılmaz', 'De Vries', 'Janssens', 'Silva', 'Costa', 'Papadopoulos', 'Novák', 'Horváth', 'Huber', 'Dubois', 'Lefèvre', 'Moreau', 'Weber', 'Bianchi', 'López', 'Wilson', 'Fischer'];
+const pname = () => pick(FIRST) + ' ' + pick(LAST);
+
+const RIVALS0 = [['Charlotte Ashford', 'londres'], ['Henrik Vogel', 'hambourg'], ['Isabella Moretti', 'milan'], ['Amélie Dufresne', 'paris'], ['Lucas Ferreira', 'lisbonne'], ['Kemal Arslan', 'istanbul'], ['Dimitri Kallas', 'athenes'], ['Viktor Zelenka', 'prague']];
+
+const LOANT = {
+  biz: { n: 'Prêt d\'acquisition (nantissement du fonds)', m: .022, ltv: .6, max: 120 },
+  re: { n: 'Prêt hypothécaire', m: .013, ltv: .8, max: 300 },
+  promo: { n: 'Crédit promoteur (in fine)', m: .03, ltv: .7, max: 48, inFine: true },
+  lomb: { n: 'Crédit lombard (nantissement de titres)', m: .012, ltv: .6, max: 60, inFine: true, varOnly: true },
+  treso: { n: 'Prêt de trésorerie (sans garantie)', m: .045, ltv: 0, max: 60 },
+};
+
+/* ==========================================================================
+   ÉTAT
+   ========================================================================== */
+let G = null;
+
+function newGame(o) {
+  G = {
+    v: 1, name: o.name || 'Vous', nat: o.nat || 'FR', resCity: o.resCity || 'paris', holdC: o.holdC || 'FR', diff: o.diff || 'normal',
+    day: 0, hold: o.capital * .9, perso: o.capital * .1, contrib: o.capital * .9, score: 680, monacoDep: 0, flatIT: false,
+    eco: { phase: 'expansion', gdp: .018, infl: .022, ecb: .0215, conf: 1.0, crash: 0, idx: 5000, idxH: [], shocks: [] },
+    fx: { GBP: 1, CHF: 1, PLN: 1, HUF: 1, CZK: 1, RON: 1, TRY: 1 }, rm: {}, rmH: {}, costIdx: 1, spreadAdj: {},
+    stocks: STOCKS0.map(s => ({ t: s[0], n: s[1], sec: s[2], b: s[3], p: s[4], p0: s[4], h: [] })), port: {},
+    biz: [], props: [], projs: [], loans: [], lux: [], execs: {}, cands: {}, listings: [], log: [], pending: [],
+    tb: {}, carry: {}, ytd: { is: 0, div: 0, wealth: 0, other: 0, divPaid: 0 }, tot: { is: 0, div: 0, wealth: 0, other: 0 },
+    taxHist: [], nwh: [], odDays: 0, over: false, overMsg: '', missedTotal: 0,
+    rivals: RIVALS0.map(([n, c]) => ({ n, c, nw: rnd(4e6, 14e6), mu: rnd(.06, .2), sig: rnd(.15, .35) })),
+    stats: { bought: 0 },
+  };
+  CITIES.forEach(c => { G.rm[c.id] = 1; G.rmH[c.id] = [1]; });
+  // historique boursier initial
+  for (let i = 0; i < 120; i++) stepMarkets(true);
+  G.stocks.forEach(s => s.p0 = s.p);
+  CITIES.forEach(c => { for (let i = 0; i < 3; i++) G.listings.push(genListing(c.id)); });
+  Object.keys(EXECS).forEach(genExecCands);
+  G.nwh.push([0, netWorth()]);
+  news('info', `Création de votre holding (${CO(G.holdC).f} ${CO(G.holdC).n}) avec ${eur(G.hold)} de capital. Trésorerie personnelle : ${eur(G.perso)}.`);
+  news('info', `Résidence fiscale : ${CITY[G.resCity].n}. Nationalité : ${CO(G.nat).n}.`);
+  return G;
+}
+
+function news(type, text, major) {
+  G.log.unshift({ d: G.day, t: type, x: text });
+  if (G.log.length > 600) G.log.length = 600;
+  if (major) addDecision({ title: type === 'good' ? 'Bonne nouvelle' : type === 'bad' ? 'Incident' : 'Information', text, choices: [{ l: 'Compris', k: 'ok' }] });
+}
+function addDecision(d) { G.pending.push(Object.assign({ id: uid(), d: G.day }, d)); }
+
+/* ==========================================================================
+   HELPERS ÉCONOMIQUES
+   ========================================================================== */
+const fxOf = c => G.fx[CO(c).cur] || 1;
+const shock = k => G.eco.shocks.some(s => s.k === k && s.until > G.day);
+function shockMult(sector) {
+  let m = 1;
+  if (shock('pandemie')) m *= { fastfood: .7, nightclub: 0, hotel: .35, yacht: .5, cardealer: .8 }[sector];
+  if (shock('tourisme') && ['hotel', 'yacht', 'nightclub'].includes(sector)) m *= 1.15;
+  return m;
+}
+function demandIdx(ci, S) {
+  const v = { pop: clamp(.4 + .25 * Math.log2(ci.pop + .5), .3, 1.6), tour: ci.t, wealth: Math.min(ci.w, 2), night: ci.ni };
+  let s = 0, t = 0; for (const k in S.w) { s += S.w[k] * v[k]; t += S.w[k]; } return s / t;
+}
+function staffReq(b) {
+  const S = SECTORS[b.sector], r = {};
+  const vm = ['fastfood', 'nightclub', 'hotel'].includes(b.sector) ? clamp(demandIdx(CITY[b.city], S), .6, 1.5) : 1;
+  for (const k in S.roles) r[k] = Math.ceil(S.roles[k][1] * (b.sector === 'yacht' ? 1 : b.size) * (S.roles[k][1] > 1 ? vm : 1));
+  if (b.sector === 'yacht') { r.skipper = b.fleet.length; r.matelot = b.fleet.reduce((a, y) => a + YACHTS[y.m].crew, 0); }
+  return r;
+}
+function roleInfo(b, k) {
+  if (k === 'skipper') return ['Skipper', 0, 4800, 3];
+  if (k === 'matelot') return ['Matelot / hôtesse', 0, 2600, 2];
+  return SECTORS[b.sector].roles[k];
+}
+function staffFactor(b) {
+  const req = staffReq(b); let sw = 0, s = 0;
+  for (const k in req) { const need = req[k]; if (!need) continue; const w = roleInfo(b, k)[3]; const r = (b.staff[k] || 0) / need; s += w * (r < 1 ? Math.pow(r, 1.3) : 1 + Math.min(r - 1, .3) * .15); sw += w; }
+  return sw ? s / sw : 1;
+}
+function quality(b, noRep) {
+  let q = staffFactor(b);
+  q *= b.dir ? (.8 + b.dir.skill / 250) : .7;
+  q *= .6 + .4 * b.cond / 100;
+  if (!noRep) q *= .7 + .6 * b.rep / 100;
+  if (G.execs.pdg) q *= 1 + G.execs.pdg.skill / 2000;
+  if (b.mk > G.day) q *= 1.08;
+  return clamp(q, .15, 1.7);
+}
+function staffMonthly(b) {
+  const C = CO(CITY[b.city].c); let s = 0;
+  for (const k in b.staff) s += (b.staff[k] || 0) * roleInfo(b, k)[2] * C.wage * (b.raise || 1);
+  if (b.dir) s += b.dir.sal;
+  return s * (1 + C.cs);
+}
+function rentMonthly(b) {
+  const ci = CITY[b.city];
+  if (b.sector === 'yacht') return b.fleet.reduce((a, y) => a + 1500 * (y.m + 1) * cityPrice(ci), 0);
+  return SECTORS[b.sector].rent * b.size * Math.pow(ci.m2 / 6000, .9) * fxOf(ci.c);
+}
+const fleetValue = b => b.sector === 'yacht' ? b.fleet.reduce((a, y) => a + y.v, 0) : 0;
+const bizValue = b => b.val + fleetValue(b);
+
+function bizRevenue(b, x, st) {
+  const n = () => st ? Math.max(0, 1 + gauss() * .12) : 1;
+  let g = 0, c = x.S.cogs;
+  switch (b.sector) {
+    case 'fastfood': { const wdf = [1.05, .9, .88, .92, 1, 1.2, 1.25][x.wd]; g = 1000 * b.size * x.dem * x.q * x.econ * x.pv * wdf * n() * 11 * x.cp * b.price; break; }
+    case 'nightclub': { const wdf = [.15, 0, 0, .35, .6, 1, 1.15][x.wd]; const cust = Math.min(650 * b.size, 400 * b.size * x.dem * x.q * x.econ * x.pv * wdf * n()); g = cust * 40 * x.cp * b.price; break; }
+    case 'yacht': {
+      const occ = clamp(SEASON_Y[x.m] * (['TR', 'GR'].includes(x.ci.c) ? 1.2 : 1) * .85 * Math.sqrt(x.dem) * x.q * x.econ * x.pv, 0, .97);
+      for (const y of b.fleet) { if ((y.down || 0) > G.day) continue; const p = st ? (R() < occ ? 1 : 0) : occ; g += p * YACHTS[y.m].rate * clamp(x.cp, .7, 1.3) * b.price; }
+      break;
+    }
+    case 'cardealer': {
+      const lam = .4 * b.size * x.dem * x.q * x.econ * x.pv * (x.wd === 0 ? 0 : 1.15);
+      const sales = st ? poisson(lam) : lam; const avg = 150000 * clamp(x.cp, .7, 1.6);
+      const margin = clamp(.12 + (b.price - 1) * .4, .01, .3);
+      const car = sales * avg, at = 1800 * b.size * x.q * clamp(x.cp, .7, 1.6) * (x.wd === 0 ? 0 : 1) * n();
+      g = car + at; c = g ? (car * (1 - margin) + at * .45) / g : 0; break;
+    }
+    case 'hotel': {
+      const s = (x.ci.coast ? SEASON_HC : SEASON_H)[x.m];
+      const occ = clamp(.62 * x.dem * x.q * x.econ * x.pv * s * n(), 0, .96);
+      g = 50 * b.size * occ * 190 * x.cp * b.price * 1.3; break;
+    }
+  }
+  return { g, c };
+}
+function dayEcon(b, day, st) {
+  const S = SECTORS[b.sector], ci = CITY[b.city], C = CO(ci.c), dt = dateOf(day);
+  const closed = b.closedUntil > day || (shock('pandemie') && b.sector === 'nightclub');
+  const x = { S, ci, C, m: dt.getUTCMonth(), wd: dt.getUTCDay(), dem: demandIdx(ci, S), econ: Math.pow(G.eco.conf, S.beta) * shockMult(b.sector), q: quality(b), pv: Math.pow(b.price, -S.el), cp: cityPrice(ci) * fxOf(ci.c) };
+  let g = 0, c = 0; if (!closed) { const r = bizRevenue(b, x, st); g = r.g; c = r.c; }
+  const net = g / (1 + C.tva);
+  const cogs = net * (c + (shock('energie') ? .03 : 0)), roy = net * S.royalty, fg = net * S.fg;
+  let staff = staffMonthly(b) / 30.4; if (shock('pandemie')) staff *= ci.c === 'TR' ? .8 : .4;
+  const rent = rentMonthly(b) / 30.4, ins = b.insured ? bizValue(b) * S.ins / 365 : 0, maint = b.sector === 'yacht' ? fleetValue(b) * .05 / 365 : 0;
+  return { net, cogs, roy, fg, staff, rent, ins, maint, ebitda: net - cogs - roy - fg - staff - rent - ins - maint, closed, q: x.q };
+}
+function estMonthly(b) {
+  let net = 0, eb = 0; const N = 52;
+  const cu = b.closedUntil; b.closedUntil = 0;
+  for (let i = 0; i < N; i++) { const e = dayEcon(b, G.day + i * 7 + (i % 7), false); net += e.net; eb += e.ebitda; }
+  b.closedUntil = cu;
+  return { net: net / N * 30.4, eb: eb / N * 30.4 };
+}
+function trailing(b, n = 30) { const h = b.h.slice(-n); if (!h.length) return null; return { net: h.reduce((a, x) => a + x[0], 0), eb: h.reduce((a, x) => a + x[1], 0), n: h.length }; }
+
+/* ---------------- Immobilier */
+function propValue(p) {
+  const ci = CITY[p.city]; return p.m2 * ci.m2 * RT[p.type].f * G.rm[p.city] * fxOf(ci.c) * (.75 + .25 * p.cond / 100);
+}
+function propYield(p) { return CO(CITY[p.city].c).yield + RT[p.type].y; }
+function propRentGross(p) { return propValue(p) * propYield(p) / 12; }
+function propNetMonthly(p) {
+  const C = CO(CITY[p.city].c); const g = propRentGross(p) * p.occ * (p.squat ? 0 : 1);
+  return g * (1 - RT[p.type].mg) - propValue(p) * C.ptax / 12;
+}
+function landRef(ci, type, m2) {
+  const C = CO(ci.c);
+  const sale = m2 * ci.m2 * RT[type].f * G.rm[ci.id] * fxOf(ci.c);
+  const build = m2 * C.build * RT[type].b * G.costIdx * 1.05;
+  return { sale, build };
+}
+function projBook(p) { return p.landCost + p.spent; }
+
+/* ==========================================================================
+   LISTINGS (opportunités)
+   ========================================================================== */
+function bizName(sector, ci) { const S = SECTORS[sector]; return `${pick(S.brands)} ${ci.n}${sector === 'fastfood' ? ' ' + pick(['Centre', 'Gare', 'Nord', 'Sud', 'Est', 'Ouest', 'Rivoli', 'Aéroport']) : ''}`; }
+function genDirector(c, lvl) {
+  const C = CO(c); const skill = clamp(Math.round(rnd(30, 95) * (lvl || 1)), 20, 98);
+  const trait = R() < .12 ? 'Véreux' : pick(['Rigoureux', 'Charismatique', 'Ambitieux', 'Expérimenté', 'Créatif', 'Prudent']);
+  return { n: pname(), skill, trait, sal: Math.round((3500 + skill * skill * 1.4) * C.wage / 100) * 100 };
+}
+function genListing(cid) {
+  const ci = CITY[cid], C = CO(ci.c), r = R(), exp = G.day + ri(25, 90), lid = uid();
+  if (r < .55) {
+    const opts = Object.keys(SECTORS).filter(k => !SECTORS[k].coast || ci.coast);
+    const sector = pick(opts), S = SECTORS[sector];
+    const b = { id: uid(), sector, city: cid, name: bizName(sector, ci), size: sector === 'yacht' ? 1 : (R() < .65 ? 1 : R() < .75 ? 2 : 3), cond: ri(35, 95), rep: ri(25, 85), price: 1, staff: {}, dir: null, insured: true, closedUntil: 0, mk: 0, raise: 1, h: [], fleet: [], val: 0, cost: 0 };
+    if (sector === 'yacht') { const n = ri(1, 3); for (let i = 0; i < n; i++) { const m = R() < .45 ? 0 : R() < .75 ? 1 : 2; b.fleet.push({ id: uid(), m, v: YACHTS[m].v * rnd(.65, 1) }); } }
+    const req = staffReq(b); for (const k in req) b.staff[k] = Math.max(0, Math.round(req[k] * rnd(.7, 1.15)));
+    if (R() < .6) b.dir = genDirector(ci.c);
+    const est = estMonthly(b); const fv = fleetValue(b);
+    const pot = JSON.parse(JSON.stringify(b)); for (const k in req) pot.staff[k] = req[k]; pot.dir = pot.dir || { skill: 60, sal: 0 }; pot.cond = Math.max(pot.cond, 75); pot.rep = Math.max(pot.rep, 55);
+    const estP = estMonthly(pot);
+    const floor = 250000 * b.size * cityPrice(ci);
+    const valMult = clamp(Math.pow(G.eco.conf, 1.5), .7, 1.25);
+    const basis = .4 * Math.max(0, est.eb) + .6 * Math.max(0, estP.eb);
+    let price = basis > 0 ? Math.max(floor, basis * 12 * S.mult * valMult * rnd(.8, 1.3)) : floor * rnd(.6, 1);
+    price = Math.round((price + fv) / 1000) * 1000;
+    b.val = price - fv;
+    return { lid, kind: 'biz', city: cid, exp, price, b, estE: est.eb, estN: est.net, estP: estP.eb };
+  }
+  if (r < .8) {
+    const types = Object.keys(RT).filter(t => t !== 'luxe' || luxeOK(ci));
+    const type = pick(types);
+    const m2 = Math.round({ studios: rnd(1500, 4000), logements: rnd(800, 5000), bureaux: rnd(1000, 8000), luxe: rnd(300, 2000), commerce: rnd(200, 1500) }[type] / 10) * 10;
+    const p = { id: uid(), type, city: cid, m2, cond: ri(40, 95), occ: rnd(.8, 1), name: `${RT[type].n} — ${ci.n}`, squat: 0, cost: 0 };
+    const v = propValue(p);
+    return { lid, kind: 're', city: cid, exp, price: Math.round(v * rnd(.85, 1.15) / 1000) * 1000, p };
+  }
+  let allowed = ['logements', 'studios', 'bureaux', 'commerce'].filter(() => R() < .55);
+  if (!allowed.length) allowed = ['logements'];
+  if (luxeOK(ci) && (R() < .6 || ['nice', 'monaco'].includes(cid))) allowed.push('luxe');
+  const ref = pick(allowed);
+  const m2 = Math.round(rnd(1500, 12000) * (cid === 'monaco' ? .25 : 1) / 10) * 10;
+  const { sale, build } = landRef(ci, ref, m2);
+  const tm = rnd(.04, .38);
+  const land = Math.max(m2 * 120, (sale - build) / (1 + tm));
+  return { lid, kind: 'land', city: cid, exp, price: Math.round(land / 1000) * 1000, m2, allowed, name: `Terrain constructible — ${pick(['ZAC', 'Front de mer', 'Centre-ville', 'Quartier gare', 'Friche industrielle', 'Hauts de ville'])}` };
+}
+
+/* ==========================================================================
+   BANQUE
+   ========================================================================== */
+const euribor = () => G.eco.ecb + .001;
+function monthlyIncome() {
+  let s = 0; for (const b of G.biz) { const t = trailing(b, 30); if (t) s += t.eb / t.n * 30.4; }
+  for (const p of G.props) if (!p.sale) s += propNetMonthly(p);
+  return s;
+}
+function loanPaymentMonthly(l) { const r = l.rate / 12; if (LOANT[l.type].inFine) return l.rem * r; return annuity(l.rem, l.rate, l.left); }
+function annuity(P, rate, n) { const r = rate / 12; if (n <= 0) return P; if (r <= 0) return P / n; return P * r / (1 - Math.pow(1 + r, -n)); }
+const debtTotal = () => G.loans.reduce((a, l) => a + l.rem, 0);
+function collateralValue(col) {
+  if (!col) return 0;
+  if (col.k === 'biz') { const b = G.biz.find(x => x.id === col.id); return b ? bizValue(b) : 0; }
+  if (col.k === 'prop') { const p = G.props.find(x => x.id === col.id); return p ? propValue(p) : 0; }
+  if (col.k === 'proj') { const p = G.projs.find(x => x.id === col.id); return p ? projBook(p) + p.budget * .3 : 0; }
+  if (col.k === 'port') return portValue();
+  return 0;
+}
+const loansOn = col => G.loans.filter(l => l.col && l.col.k === col.k && l.col.id === col.id).reduce((a, l) => a + l.rem, 0);
+function riskPremium() { const s = G.score; return s >= 700 ? -(s - 700) / 100 * .002 : (700 - s) / 100 * .006; }
+function prestige() { return G.lux.reduce((a, x) => a + LUX[x.i].pr, 0) + G.biz.length * 2 + G.props.length; }
+function overdraftLimit() { return 50000 + .03 * grossAssetsHolding() + (G.execs.daf ? .01 * grossAssetsHolding() : 0); }
+
+function loanQuote(o) {
+  // o: {type, amount, months, fixed, value (valeur du bien), income (revenu mensuel du bien), country, col, extraCost}
+  const T = LOANT[o.type], C = CO(o.country || G.holdC), e = G.eco, reasons = [];
+  const fixed = T.varOnly ? false : o.fixed;
+  const base = fixed ? e.ecb + .003 + o.months / 12 * .0005 : euribor();
+  const spread = C.spr + (G.spreadAdj[o.country] || 0);
+  const ltv = o.value ? o.amount / o.value : 0;
+  const ltvP = ltv > .5 ? (ltv - .5) * .015 : 0;
+  const daf = G.execs.daf ? G.execs.daf.skill / 100 * .004 : 0;
+  const priv = netWorth() > 2e7 ? .003 : 0;
+  const ins = o.type === 'lomb' ? 0 : .0025;
+  const rate = Math.max(.005, base + T.m + spread + riskPremium() + ltvP - daf - priv) + ins;
+  const pay = T.inFine ? o.amount * rate / 12 : annuity(o.amount, rate, o.months);
+  const fees = Math.max(1000, o.amount * .01);
+  let cap = T.ltv; if (C.ltvCap && o.type !== 'lomb' && o.type !== 'treso') cap = Math.min(cap, C.ltvCap);
+  if (shock('immo') && (o.type === 're' || o.type === 'promo')) cap -= .1;
+  if (o.amount <= 0) reasons.push('Montant nul');
+  if (o.months > T.max) reasons.push(`Durée maximale : ${T.max} mois`);
+  if (G.score < 450) reasons.push(`Score de crédit insuffisant (${G.score} < 450)`);
+  if (G.loans.some(l => l.missed > 0)) reasons.push('Incident de paiement en cours sur un autre prêt');
+  if (G.hold < -overdraftLimit()) reasons.push('Compte de la holding au-delà du découvert autorisé');
+  if (o.type === 'treso') {
+    const maxT = Math.min(2e6, Math.max(0, monthlyIncome() * 3));
+    if (o.amount > maxT) reasons.push(`Trésorerie : plafond de ${eur(maxT)} (3 mois d'EBITDA)`);
+  } else if (o.value) {
+    const avail = cap * o.value - (o.existing || 0);
+    if (o.amount > avail + 1) reasons.push(`Apport insuffisant : la banque finance au plus ${pct(cap, 0)} de la valeur (${eur(Math.max(0, avail))})`);
+  }
+  const existing = G.loans.reduce((a, l) => a + loanPaymentMonthly(l), 0);
+  const inc = monthlyIncome() + (o.income || 0);
+  let dscr = null;
+  if (o.type !== 'lomb' && o.type !== 'promo') {
+    dscr = inc / Math.max(1, existing + pay);
+    if (dscr < 1.2) reasons.push(`Capacité de remboursement insuffisante : revenus / échéances = ${dscr.toFixed(2).replace('.', ',')} (minimum 1,20)`);
+  }
+  if (o.type === 'promo' && G.hold + o.amount < (o.extraCost || 0) * .1) reasons.push('La banque exige une réserve de trésorerie d\'au moins 10 % du budget travaux');
+  return { ok: !reasons.length, reasons, rate, pay, fees, fixed, parts: { base, marge: T.m, pays: spread, risque: riskPremium(), ltv: ltvP, daf: -daf, prive: -priv, assurance: ins }, dscr, cap };
+}
+function createLoan(o, q, label) {
+  const T = LOANT[o.type];
+  const l = { id: uid(), type: o.type, label: label || T.n, principal: o.amount, rem: o.amount, rate: q.rate, fixed: q.fixed, margin: q.rate - euribor(), months: o.months, left: o.months, col: o.col || null, missed: 0, start: G.day, country: o.country || G.holdC };
+  G.loans.push(l);
+  G.hold += o.amount - q.fees;
+  G.tb[l.country] = (G.tb[l.country] || 0) - q.fees;
+  news('info', `🏦 Prêt accordé : ${l.label} de ${eur(o.amount)} à ${pct(q.rate, 2)} ${q.fixed ? 'fixe' : 'variable'} sur ${o.months} mois. Frais de dossier ${eur(q.fees)}.`);
+  return l;
+}
+function repayLoan(l, amount, forced) {
+  amount = Math.min(amount, l.rem);
+  const pen = forced ? 0 : (l.fixed ? .03 : .01) * amount;
+  G.hold -= amount + pen; l.rem -= amount;
+  if (pen) G.tb[l.country] = (G.tb[l.country] || 0) - pen;
+  if (l.rem < 1) G.loans = G.loans.filter(x => x !== l);
+  return pen;
+}
+function repayLoansOn(col, share = 1) {
+  for (const l of G.loans.filter(l => l.col && l.col.k === col.k && l.col.id === col.id)) repayLoan(l, l.rem * share, true);
+}
+
+/* ==========================================================================
+   VALORISATION
+   ========================================================================== */
+function portValue() { let s = 0; for (const t in G.port) { const st = G.stocks.find(x => x.t === t); s += st.p * G.port[t].q; } return s; }
+function grossAssetsHolding() {
+  return Math.max(0, G.hold) + G.biz.reduce((a, b) => a + bizValue(b), 0) + G.props.reduce((a, p) => a + propValue(p), 0) + G.projs.reduce((a, p) => a + projBook(p) + (p.escrow || 0), 0) + portValue();
+}
+const luxValue = () => G.lux.reduce((a, x) => a + x.v, 0);
+function netWorth() {
+  return G.hold + G.perso + G.monacoDep + G.biz.reduce((a, b) => a + bizValue(b), 0) + G.props.reduce((a, p) => a + propValue(p), 0)
+    + G.projs.reduce((a, p) => a + projBook(p) + (p.escrow || 0), 0) + portValue() + luxValue() - debtTotal();
+}
+const ptc = () => { const c = CITY[G.resCity].c; return (c === 'MC' && G.nat === 'FR') ? 'FR' : c; };
+function divTaxRate() { const c = ptc(); if (c === 'IT' && G.flatIT) return 0; return CO(c).div; }
+
+/* ==========================================================================
+   DIRECTION
+   ========================================================================== */
+function genExecCands(role) {
+  const E = EXECS[role]; G.cands[role] = [];
+  for (let i = 0; i < 3; i++) {
+    const skill = ri(40, 97);
+    let trait = R() < .1 ? 'Véreux' : pick(['Rigoureux', 'Visionnaire', 'Expérimenté', 'Négociateur', 'Prudent']);
+    if (role === 'fisc' && R() < .35) trait = 'Agressif';
+    G.cands[role].push({ n: pname(), skill, trait, sal: Math.round(E.base * Math.pow(skill / 70, 2) * rnd(.85, 1.2) / 1000) * 1000 });
+  }
+}
+
+/* ==========================================================================
+   SIMULATION QUOTIDIENNE
+   ========================================================================== */
+function stepMarkets(pre) {
+  const e = G.eco, ph = PH[e.phase];
+  let m = ph.mu / 365 + ph.vol / Math.sqrt(365) * gauss();
+  if (e.crash > 0) { m -= .012 + R() * .012; e.crash--; }
+  for (const s of G.stocks) {
+    let sh = 0;
+    if (shock('pandemie') && ['Restauration', 'Loisirs', 'Nautisme', 'Aéronautique'].includes(s.sec)) sh -= .004;
+    if (shock('pandemie') && s.sec === 'Santé') sh += .003;
+    if (shock('energie') && s.sec === 'Énergie') sh += .002;
+    if (shock('immo') && ['Immobilier', 'BTP', 'Banque'].includes(s.sec)) sh -= .002;
+    s.p *= Math.exp(s.b * m + .013 * gauss() + sh);
+    s.p = Math.max(.5, s.p);
+    s.h.push(+s.p.toFixed(3)); if (s.h.length > 250) s.h.shift();
+  }
+  e.idx = G.stocks.reduce((a, s) => a + s.p / (s.p0 || s.p), 0) / G.stocks.length * 5000;
+  if (!pre) { e.idxH.push(+e.idx.toFixed(1)); if (e.idxH.length > 400) e.idxH.shift(); }
+  for (const cur in G.fx) { const f = FXP[cur]; G.fx[cur] *= Math.exp(f.d + f.v * gauss() - (cur === 'TRY' && e.phase === 'recession' ? .0005 : 0)); }
+}
+
+function stepBiz(b) {
+  const e = dayEcon(b, G.day, true), ci = CITY[b.city], C = CO(ci.c);
+  G.hold += e.ebitda;
+  G.tb[ci.c] = (G.tb[ci.c] || 0) + e.ebitda;
+  b.h.push([Math.round(e.net), Math.round(e.ebitda)]); if (b.h.length > 400) b.h.shift();
+  // réputation & état
+  const target = clamp(35 + (quality(b, true) - .7) * 120 + (b.mk > G.day ? 15 : 0) + (b.price < 1 ? 5 : b.price > 1 ? -4 : 0) + (b.sector === 'nightclub' ? prestige() / 40 : 0), 5, 98);
+  b.rep += (target - b.rep) * .01;
+  const req = staffReq(b), er = req.entretien ? (b.staff.entretien || 0) / req.entretien : 1;
+  b.cond = clamp(b.cond - .045 * (er < 1 ? 1 / Math.max(.25, er * er) : 1), 0, 100);
+  if (b.sector === 'yacht') b.fleet.forEach(y => y.v *= 1 - .06 / 365);
+  bizIncidents(b, e, C, req);
+}
+
+function bizIncidents(b, e, C, req) {
+  if (b.closedUntil > G.day) return;
+  const ratio = k => req[k] ? (b.staff[k] || 0) / req[k] : 1;
+  const drh = G.execs.drh ? .5 : 1, jur = G.execs.jur ? .5 : 1;
+  const ci = CITY[b.city];
+  if (R() < .00006 * (b.cond < 40 ? 2.5 : 1)) {
+    const dmg = bizValue(b) * rnd(.08, .3), paid = b.insured ? dmg * .9 : 0, days = ri(30, 90);
+    G.hold -= dmg - paid; b.closedUntil = G.day + days; b.cond = Math.max(10, b.cond - 40);
+    news('bad', `🔥 Incendie à ${b.name} : dégâts ${eur(dmg)}${b.insured ? `, remboursés ${eur(paid)} par l'assurance` : ' — ÉTABLISSEMENT NON ASSURÉ'}. Fermeture ${days} jours.`, true);
+    return;
+  }
+  if ((b.sector === 'fastfood' || b.sector === 'hotel') && R() < .0015 * (ratio('entretien') < 1 ? 3 : 1)) {
+    if (b.cond < 50 || ratio('entretien') < .8) {
+      const fine = 15000 * jur; G.hold -= fine; b.closedUntil = G.day + 7; b.rep -= 12;
+      news('bad', `🧪 Contrôle sanitaire défavorable à ${b.name} : fermeture administrative 7 jours, amende ${eur(fine)}. Hygiène insuffisante (personnel d'entretien / état des locaux).`, true);
+    } else news('good', `🧪 Contrôle sanitaire satisfaisant à ${b.name}.`);
+    return;
+  }
+  if (R() < .0004 * (C.strike || 1) * drh) {
+    addDecision({ title: `Grève — ${b.name}`, text: `Le personnel de ${b.name} (${ci.n}) se met en grève et réclame une hausse de salaire de 4 %.`, choices: [{ l: 'Accorder +4 % de salaire', k: 'greve_ok', a: { b: b.id } }, { l: 'Tenir bon (fermeture de 4 à 12 jours)', k: 'greve_no', a: { b: b.id } }] });
+    return;
+  }
+  if (R() < .0003 * C.sev * drh) {
+    const fine = rnd(15000, 60000) * C.sev * jur; G.hold -= fine;
+    news('bad', `⚖️ Litige prud'homal perdu (${b.name}, ${C.n}) : ${eur(fine)} d'indemnités.`); return;
+  }
+  if (b.sector === 'nightclub') {
+    if (R() < .0012 * C.night * (ratio('securite') < 1 ? 3 : 1)) {
+      const days = Math.round(ri(15, 60) * (G.execs.jur ? .6 : 1)); b.closedUntil = G.day + days; b.rep -= 10;
+      news('bad', `🚨 Rixe à ${b.name} : fermeture administrative de ${days} jours ordonnée par la préfecture/police (${C.n}).${ratio('securite') < 1 ? ' Effectif de sécurité insuffisant.' : ''}`, true); return;
+    }
+    if (R() < .0002 * C.night) {
+      b.closedUntil = G.day + 90; b.rep -= 25; const fine = 80000 * jur; G.hold -= fine;
+      news('bad', `🚔 Descente de police pour trafic de stupéfiants à ${b.name} : fermeture 90 jours, amende ${eur(fine)}.`, true); return;
+    }
+  }
+  if (b.sector === 'yacht') {
+    const m = dateOf(G.day).getUTCMonth();
+    for (const y of b.fleet) {
+      if ((y.down || 0) > G.day) continue;
+      if (R() < .0015 * SEASON_Y[m] * 3) { const cost = y.v * rnd(.01, .04); G.hold -= cost; y.down = G.day + ri(7, 21); news('bad', `🔧 Avarie moteur sur le ${YACHTS[y.m].n} (${b.name}) : ${eur(cost)} de réparations, immobilisé.`); return; }
+      if (R() < .00025) { const dmg = y.v * rnd(.1, .3), paid = b.insured ? dmg * .85 : 0; G.hold -= dmg - paid; y.v -= dmg * .5; y.down = G.day + ri(30, 60); news('bad', `🌊 Tempête : le ${YACHTS[y.m].n} de ${b.name} est endommagé (${eur(dmg)}${b.insured ? ', assuré' : ', NON ASSURÉ'}).`, true); return; }
+    }
+  }
+  if (b.sector === 'cardealer' && R() < .0007) {
+    const loss = rnd(120000, 400000), paid = b.insured ? loss * .8 : 0; G.hold -= loss - paid;
+    news('bad', `🚗 Vol de véhicules chez ${b.name} : ${eur(loss)}${b.insured ? ` (assurance : ${eur(paid)})` : ''}.`); return;
+  }
+  if (R() < .0005) { b.rep = Math.max(0, b.rep - 15); news('bad', `📱 Bad buzz sur les réseaux sociaux : ${b.name} perd 15 points de réputation.`); return; }
+  if (R() < .0004) { b.rep = Math.min(100, b.rep + 12); news('good', `⭐ Une célébrité a été vue à ${b.name} : +12 de réputation.`); return; }
+  if (b.dir && b.dir.trait === 'Véreux' && R() < .003) {
+    const amt = rnd(20000, 250000) * b.size; G.hold -= amt;
+    addDecision({ title: `Détournement de fonds — ${b.name}`, text: `Un audit révèle que votre directeur ${b.dir.n} a détourné ${eur(amt)}.`, choices: [{ l: 'Porter plainte et le licencier (40 % de chances de récupérer la moitié)', k: 'fraud_sue', a: { b: b.id, amt } }, { l: 'Le licencier discrètement', k: 'fraud_fire', a: { b: b.id } }] });
+    return;
+  }
+  if (b.dir && R() < .0006) { news('bad', `👋 ${b.dir.n}, directeur de ${b.name}, démissionne pour rejoindre un concurrent.`, true); b.dir = null; return; }
+  if (R() < .00025) {
+    const offer = bizValue(b) * rnd(1.15, 1.5), who = pick(G.rivals).n;
+    addDecision({ title: `Offre de rachat — ${b.name}`, text: `${who} vous propose de racheter ${b.name} pour ${eur(offer)} (valorisation actuelle ${eur(bizValue(b))}).`, choices: [{ l: `Accepter (${eur(offer)})`, k: 'sell_offer', a: { b: b.id, offer } }, { l: 'Refuser', k: 'ok' }] });
+  }
+}
+
+function stepProj(p) {
+  const ci = CITY[p.city], C = CO(ci.c), di = G.execs.immo ? .5 : 1;
+  if (p.phase === 'permis') {
+    if (G.day >= p.end) {
+      const refuse = .1 * C.bur * (G.execs.jur ? .6 : 1);
+      if (!p.appeal && R() < refuse) {
+        p.phase = 'bloque';
+        addDecision({ title: `Permis refusé — ${p.name}`, text: `La mairie de ${ci.n} refuse votre permis de construire (${C.n} : bureaucratie ×${C.bur}).`, choices: [{ l: 'Déposer un recours (50 k€, 60 % de succès, +4 mois)', k: 'permit_appeal', a: { p: p.id } }, { l: 'Abandonner et revendre le terrain (−15 %)', k: 'permit_quit', a: { p: p.id } }] });
+      } else {
+        p.phase = 'travaux'; p.t0 = G.day; p.dur = Math.round((240 + p.m2 / 25) * rnd(.9, 1.1)); p.end = G.day + p.dur;
+        news('good', `🏗️ Permis obtenu pour ${p.name}. Début des travaux (${p.dur} jours prévus).`);
+      }
+    }
+    return;
+  }
+  if (p.phase !== 'travaux') return;
+  const daily = p.budget * (1 + p.over) / p.dur;
+  let pay = Math.min(daily, p.budget * (1 + p.over) - p.spent);
+  if (pay > 0) {
+    const fromE = Math.min(p.escrow, pay); p.escrow -= fromE; G.hold -= pay - fromE; p.spent += pay;
+  }
+  if (R() < .002 * di) { const o = rnd(.04, .15); p.over += o; news('bad', `💸 Dépassement de budget sur ${p.name} : +${pct(o, 0)} (aléas de chantier, prix des matériaux).`); }
+  if (R() < .0015 * di) { const d = ri(20, 90); p.end += d; p.dur += d; news('bad', `⏳ Retard de chantier sur ${p.name} : +${d} jours.`); }
+  if (R() < .0003) { const d = ri(45, 120); p.end += d; p.dur += d; p.over += .08; news('bad', `🏚️ Faillite de l'entreprise de gros œuvre sur ${p.name} : +${d} jours, +8 % de coûts.`, true); }
+  if (G.day >= p.end && p.spent >= p.budget * (1 + p.over) - 1) {
+    p.phase = 'livre';
+    const prop = { id: uid(), type: p.type, city: p.city, m2: p.m2, cond: 100, occ: .9, name: p.name, squat: 0, cost: projBook(p), bought: G.day, fresh: true };
+    G.props.push(prop);
+    // transfère les prêts promoteur sur le bien
+    G.loans.forEach(l => { if (l.col && l.col.k === 'proj' && l.col.id === p.id) l.col = { k: 'prop', id: prop.id }; });
+    if (p.escrow > 0) { G.hold += p.escrow; p.escrow = 0; }
+    G.projs = G.projs.filter(x => x !== p);
+    const v = propValue(prop);
+    addDecision({ title: `Livraison — ${p.name}`, text: `Votre programme est livré. Prix de revient : ${eur(prop.cost)}. Valeur de marché estimée : ${eur(v)} (marge potentielle ${pct(v / prop.cost - 1)}). Que faites-vous ?`, choices: [{ l: `Vendre en bloc à un investisseur (${eur(v * .88)}, immédiat)`, k: 'sell_bloc', a: { p: prop.id } }, { l: 'Vente au détail (prix plein, sur plusieurs mois)', k: 'sell_retail', a: { p: prop.id } }, { l: 'Conserver et mettre en location', k: 'ok' }] });
+  }
+}
+
+function stepSales() {
+  const heat = clamp(G.eco.conf * (1.3 - G.eco.ecb * 10) * (shock('immo') ? .5 : 1), .2, 1.6);
+  for (const p of [...G.props]) {
+    if (!p.sale) continue;
+    let sold = 0; for (let i = 0; i < p.sale.left; i++) if (R() < .012 * heat) sold++;
+    if (!sold) continue;
+    const share = sold / p.sale.left;
+    const value = propValue(p) * share, fees = value * .03;
+    const basis = p.cost * share, C = CO(CITY[p.city].c);
+    repayLoansOn({ k: 'prop', id: p.id }, share);
+    G.hold += value - fees;
+    G.tb[CITY[p.city].c] = (G.tb[CITY[p.city].c] || 0) + (value - fees - basis);
+    p.cost -= basis; p.m2 = Math.round(p.m2 * (1 - share)); p.sale.left -= sold; p.sale.done += sold;
+    if (p.sale.left <= 0 || p.m2 < 10) { G.props = G.props.filter(x => x !== p); news('good', `🏠 ${p.name} : tous les lots sont vendus.`); }
+  }
+}
+
+function stepRivals() {
+  const ph = PH[G.eco.phase];
+  for (const r of G.rivals) {
+    const mu = r.mu + ph.mu * .4;
+    r.nw *= Math.exp((mu - r.sig * r.sig / 2) / 365 + r.sig * gauss() / Math.sqrt(365));
+    if (R() < .0006) { const up = R() < .55; r.nw *= up ? rnd(1.2, 1.6) : rnd(.3, .7); news(up ? 'info' : 'info', up ? `📈 ${r.n} réalise une opération spectaculaire (${CITY[r.c].n}).` : `📉 ${r.n} essuie de lourdes pertes après un mauvais investissement.`); }
+  }
+}
+
+function dailyMacro() {
+  const e = G.eco, ph = PH[e.phase];
+  const confT = ph.conf * (shock('pandemie') ? .8 : 1) * (shock('energie') ? .95 : 1);
+  e.conf += (confT - e.conf) * .02 + gauss() * .003;
+  e.gdp += (ph.gdp - e.gdp) * .02;
+  e.shocks = e.shocks.filter(s => s.until > G.day);
+}
+
+function nextDay() {
+  if (!G || G.over) return false;
+  if (G.pending.length) return false;
+  G.day++;
+  const dt = dateOf(G.day);
+  dailyMacro(); stepMarkets();
+  for (const b of G.biz) stepBiz(b);
+  for (const p of [...G.projs]) stepProj(p);
+  stepSales(); stepRivals();
+  // luxe
+  for (const x of G.lux) { const L = LUX[x.i]; x.v *= Math.exp(L.g / 365 + (L.vol || .03) * gauss() / Math.sqrt(365)); }
+  // intérêts
+  if (G.hold < 0) { const it = -G.hold * (euribor() + .09) / 365; G.hold -= it; G.tb[G.holdC] = (G.tb[G.holdC] || 0) - it; }
+  else { const it = G.hold * Math.max(0, G.eco.ecb - .005) / 365; G.hold += it; G.tb[G.holdC] = (G.tb[G.holdC] || 0) + it; }
+  // exécutifs (salaires quotidiens)
+  for (const k in G.execs) { const x = G.execs[k]; const c = x.sal * (1 + CO(G.holdC).cs) / 365; G.hold -= c; G.tb[G.holdC] = (G.tb[G.holdC] || 0) - c; }
+  if (dt.getUTCDate() === 1) monthly();
+  if (dt.getUTCDay() === 1) weekly();
+  if (G.day % 7 === 0) { G.nwh.push([G.day, Math.round(netWorth())]); if (G.nwh.length > 800) G.nwh.shift(); }
+  checkSolvency();
+  return true;
+}
+
+function weekly() {
+  // renouvellement des opportunités
+  G.listings = G.listings.filter(L => {
+    if (L.exp <= G.day) { if (R() < .3) news('info', `🤝 ${pick(G.rivals).n} a racheté « ${L.kind === 'biz' ? L.b.name : L.kind === 're' ? L.p.name : L.name} » à ${CITY[L.city].n}.`); return false; }
+    return true;
+  });
+  for (const c of CITIES) { const n = G.listings.filter(L => L.city === c.id).length; if (n < 4 && R() < .6) G.listings.push(genListing(c.id)); }
+}
+
+function monthly() {
+  const e = G.eco, dt = dateOf(G.day), m = dt.getUTCMonth();
+  // 1. économie : changement de phase
+  const nx = PH[e.phase].next; let r = R(), acc = 0; for (const k in nx) { acc += nx[k]; if (r < acc) { if (k !== e.phase) news('info', `📊 Conjoncture : l'économie européenne passe en phase « ${PH[k].n} ».`, k === 'recession' || k === 'boom'); e.phase = k; break; } }
+  const inflT = .02 + (e.gdp - .015) * .5 + (shock('energie') ? .025 : 0);
+  e.infl += (inflT - e.infl) * .15 + gauss() * .002;
+  G.costIdx *= 1 + e.infl / 12;
+  // BCE
+  const old = e.ecb;
+  if (e.infl > .026 && e.phase !== 'recession' && R() < .55) e.ecb += .0025;
+  else if ((e.infl < .016 || e.phase === 'recession') && R() < .55) e.ecb -= .0025;
+  e.ecb = clamp(e.ecb, 0, .065);
+  if (e.ecb !== old) news('info', `🏛️ La BCE ${e.ecb > old ? 'relève' : 'abaisse'} son taux directeur à ${pct(e.ecb, 2)}.`);
+  // immobilier
+  for (const c of CITIES) {
+    const mom = G.rmH[c.id].length > 3 ? (G.rm[c.id] / G.rmH[c.id][G.rmH[c.id].length - 4] - 1) / 3 * .3 : 0;
+    G.rm[c.id] *= 1 + .0025 + (e.gdp - .015) * .06 - (e.ecb - .02) * .12 + mom + gauss() * .006 - (shock('immo') ? .012 : 0);
+    G.rmH[c.id].push(+G.rm[c.id].toFixed(4)); if (G.rmH[c.id].length > 120) G.rmH[c.id].shift();
+  }
+  // 2. événements macro
+  if (R() < (e.phase === 'boom' ? .03 : .012)) { e.crash = ri(12, 25); news('bad', '💥 KRACH BOURSIER : panique sur les marchés européens.', true); e.conf -= .08; }
+  if (R() < .006) { e.shocks.push({ k: 'immo', until: G.day + ri(240, 540) }); news('bad', '🏚️ Crise immobilière : les banques durcissent leurs conditions (LTV −10 pts), les prix reculent.', true); }
+  if (R() < .0025) { e.shocks.push({ k: 'pandemie', until: G.day + ri(90, 200) }); news('bad', '🦠 PANDÉMIE : fermeture des établissements de nuit, chute du tourisme. Activité partielle financée par les États.', true); }
+  if (R() < .01) { e.shocks.push({ k: 'energie', until: G.day + ri(120, 300) }); news('bad', '⛽ Choc énergétique : coûts d\'exploitation +3 pts, inflation en hausse.'); }
+  if (R() < .012) { e.shocks.push({ k: 'tourisme', until: G.day + ri(120, 240) }); news('good', '✈️ Boom touristique en Europe : hôtels, yachts et clubs profitent de l\'afflux.'); }
+  if (R() < .025) taxReform();
+  if (R() < .01) { const c = pick(Object.keys(COUNTRIES)); G.spreadAdj[c] = (G.spreadAdj[c] || 0) + .01; news('bad', `🗳️ Instabilité politique en ${CO(c).n} : la prime de risque des banques augmente d'1 point.`); }
+  for (const c in G.spreadAdj) G.spreadAdj[c] *= .93;
+  // 3. loyers
+  for (const p of G.props) {
+    if (p.sale) continue;
+    const C = CO(CITY[p.city].c);
+    const tgt = (p.type === 'bureaux' && ['recession', 'ralent'].includes(e.phase)) ? .78 : p.type === 'studios' ? (m === 8 ? 1 : .93) : .94;
+    p.occ = clamp(p.occ + (tgt - p.occ) * .3 + gauss() * .03, .4, 1);
+    if (p.squat && G.day >= p.squat) { p.squat = 0; news('good', `🏠 ${p.name} : les occupants illégaux ont été expulsés.`); }
+    const net = propNetMonthly(p);
+    G.hold += net; G.tb[CITY[p.city].c] = (G.tb[CITY[p.city].c] || 0) + net; p.last = net;
+    p.cond = Math.max(30, p.cond - .25);
+    if (!p.squat && ['logements', 'studios', 'luxe'].includes(p.type) && R() < .004 * (C === CO('FR') ? 3 : 1)) {
+      addDecision({ title: `Occupation illégale — ${p.name}`, text: `Des occupants sans droit ni titre se sont installés dans ${p.name}. ${CITY[p.city].c === 'FR' ? 'En France, la procédure peut durer de 4 à 12 mois (trêve hivernale).' : ''}`, choices: [{ l: 'Lancer la procédure judiciaire (8 k€, loyers suspendus plusieurs mois)', k: 'squat_law', a: { p: p.id } }, { l: 'Négocier un départ amiable (35 k€)', k: 'squat_pay', a: { p: p.id } }] });
+    }
+    if (R() < .02) { const c = propValue(p) * rnd(.002, .01); G.hold -= c; news('bad', `🚿 Sinistre (dégât des eaux / toiture) sur ${p.name} : ${eur(c)} de travaux.`); }
+  }
+  // 4. échéances de prêts
+  for (const l of [...G.loans]) payLoan(l);
+  // 5. impôt sur les sociétés (mois précédent)
+  corpTax();
+  // 6. valorisations des entreprises
+  for (const b of G.biz) {
+    const t = trailing(b, 180); if (!t) continue;
+    const S = SECTORS[b.sector], e12 = t.eb / t.n * 365;
+    const tgt = Math.max(b.floor || 0, e12 * S.mult * clamp(Math.pow(e.conf, 1.5), .7, 1.25));
+    b.val += (tgt - b.val) * .3;
+  }
+  // 7. train de vie, résidence, luxe
+  const ci = CITY[G.resCity];
+  const ownsHome = G.lux.some(x => LUX[x.i].city === G.resCity);
+  const life = 9000 + (ownsHome ? 0 : ci.m2 * .45) + G.lux.reduce((a, x) => a + (LUX[x.i].up || 0), 0);
+  G.perso -= life; G.lastLife = life;
+  // 8. score de crédit
+  const late = G.loans.some(l => l.missed > 0);
+  if (!late && G.hold > -overdraftLimit()) G.score = Math.min(900, G.score + (monthlyIncome() > 0 ? 4 : 1));
+  if (G.hold < 0) G.score = Math.max(300, G.score - 3);
+  // 9. candidats
+  if (m % 2 === 0) Object.keys(EXECS).forEach(k => { if (R() < .5) genExecCands(k); });
+  // 10. fiscalité annuelle
+  if (m === 0) yearly();
+  // 11. contrôle fiscal
+  const fiscAgg = G.execs.fisc && G.execs.fisc.trait === 'Agressif';
+  if (G.day > 200 && R() < .025 * (fiscAgg ? 3 : 1)) {
+    const base = Math.max(50000, G.taxHist.slice(-12).reduce((a, x) => a + x, 0));
+    const amt = base * rnd(.08, .35) * (fiscAgg ? 2 : 1);
+    addDecision({ title: 'Contrôle fiscal', text: `L'administration fiscale notifie un redressement de ${eur(amt)} sur votre holding${fiscAgg ? ' (montages d\'optimisation jugés abusifs)' : ''}.`, choices: [{ l: `Accepter et payer (${eur(amt)})`, k: 'tax_pay', a: { amt } }, { l: `Contester au tribunal (${pct(.35 + (G.execs.jur ? G.execs.jur.skill / 200 : 0), 0)} de chances, sinon +40 % de pénalités)`, k: 'tax_fight', a: { amt } }] });
+  }
+  // perso négatif → dividende automatique
+  if (G.perso < 0 && G.hold > -G.perso * 1.5) { const need = -G.perso / (1 - divTaxRate()) + 1; payDividend(need, true); }
+  // Monaco
+  if (CITY[G.resCity].c === 'MC' && G.monacoDep < 500000) news('bad', '⚠️ Votre dépôt bancaire monégasque est inférieur à 500 k€ : votre carte de résident est menacée.');
+}
+
+function yearly() {
+  const c = ptc(), C = CO(c);
+  let wt = 0;
+  if (C.wt) {
+    let base = C.wt.re ? reNetValue() : netWorth(), th = C.wt.th, r = C.wt.r;
+    if (c === 'ES' && G.resCity === 'madrid') { th = 3e6; r = .017; }
+    wt = Math.max(0, base - th) * r;
+  }
+  if (c === 'IT' && G.flatIT) wt += CO('IT').flat;
+  if (wt > 0) {
+    G.perso -= wt; G.ytd.wealth += wt; G.tot.wealth += wt;
+    news('info', `🧾 ${c === 'FR' ? 'IFI' : c === 'IT' ? 'Forfait fiscal italien' : 'Impôt sur la fortune'} (${C.n}) : ${eur(wt)} prélevés sur votre compte personnel.`);
+  }
+  G.ytdPrev = G.ytd; G.ytd = { is: 0, div: 0, wealth: 0, other: 0, divPaid: 0 };
+}
+function reNetValue() {
+  let v = 0; for (const p of G.props) v += propValue(p) - loansOn({ k: 'prop', id: p.id });
+  for (const x of G.lux) if (LUX[x.i].city) v += x.v;
+  return Math.max(0, v);
+}
+function taxReform() {
+  const c = pick(Object.keys(COUNTRIES)), C = CO(c);
+  const opts = [
+    () => { const d = pick([-.02, -.01, .01, .02, .03]); C.is = clamp(C.is + d, 0, .4); return `l'impôt sur les sociétés passe à ${pct(C.is)}`; },
+    () => { const d = pick([-.03, .02, .04]); C.div = clamp(C.div + d, 0, .45); return `la fiscalité des dividendes passe à ${pct(C.div)}`; },
+    () => { const d = pick([-.02, .01, .02]); C.mut = clamp(C.mut + d, 0, .15); return `les droits de mutation immobiliers passent à ${pct(C.mut)}`; },
+    () => { const d = pick([-.02, .02]); C.cs = clamp(C.cs + d, 0, .5); return `les charges patronales passent à ${pct(C.cs)}`; },
+  ];
+  if (c === 'MC') return;
+  news('info', `📜 Réforme fiscale en ${C.f} ${C.n} : ${pick(opts)()}.`);
+}
+
+function payLoan(l) {
+  if (!G.loans.includes(l)) return;
+  if (!l.fixed) l.rate = Math.max(.005, euribor() + l.margin);
+  const interest = l.rem * l.rate / 12;
+  let pay = loanPaymentMonthly(l);
+  if (LOANT[l.type].inFine && l.left <= 1) pay = interest + l.rem;
+  if (G.hold - pay < -overdraftLimit()) {
+    l.missed++; G.missedTotal++; G.score = Math.max(300, G.score - 60);
+    const pen = pay * .03; G.hold -= pen;
+    news('bad', `❌ Échéance impayée sur « ${l.label} » (${eur(pay)}). Pénalités ${eur(pen)}. Impayés consécutifs : ${l.missed}/3.`, true);
+    if (l.missed >= 3) defaultLoan(l);
+    return;
+  }
+  G.hold -= pay; l.missed = 0;
+  G.tb[l.country] = (G.tb[l.country] || 0) - interest;
+  l.rem -= pay - interest; l.left--;
+  if (l.left <= 0 || l.rem < 1) { G.loans = G.loans.filter(x => x !== l); news('good', `✅ Prêt soldé : ${l.label}.`); }
+  // appel de marge lombard
+  if (l.type === 'lomb' && G.loans.includes(l)) {
+    const pv = portValue();
+    if (l.rem > pv * .75) {
+      const need = l.rem - pv * .6; sellPortfolioValue(need);
+      repayLoan(l, Math.min(need, l.rem), true);
+      news('bad', `📉 Appel de marge sur votre crédit lombard : ${eur(need)} de titres vendus d'office.`, true);
+    }
+  }
+}
+function defaultLoan(l) {
+  G.score = Math.max(300, G.score - 150);
+  let txt = `⛔ DÉFAUT DE PAIEMENT sur « ${l.label} ». `;
+  if (l.col && l.col.k !== 'none') {
+    const v = collateralValue(l.col) * .7;
+    seizeAsset(l.col, v);
+    const cover = Math.min(v, l.rem);
+    l.rem -= cover; G.hold += v - cover;
+    txt += `La banque saisit la garantie et la vend aux enchères pour ${eur(v)}. `;
+  }
+  if (l.rem > 1) { txt += `Reste dû ${eur(l.rem)} : exigible immédiatement (caution personnelle). `; const fromP = Math.min(Math.max(0, G.perso), l.rem); G.perso -= fromP; l.rem -= fromP; G.hold -= l.rem; }
+  G.loans = G.loans.filter(x => x !== l);
+  news('bad', txt, true);
+}
+function seizeAsset(col) {
+  if (col.k === 'biz') G.biz = G.biz.filter(b => b.id !== col.id);
+  if (col.k === 'prop') G.props = G.props.filter(p => p.id !== col.id);
+  if (col.k === 'proj') G.projs = G.projs.filter(p => p.id !== col.id);
+  if (col.k === 'port') G.port = {};
+}
+function sellPortfolioValue(v) {
+  for (const t in G.port) {
+    if (v <= 0) break; const s = G.stocks.find(x => x.t === t), h = G.port[t];
+    const q = Math.min(h.q, Math.ceil(v / s.p)); tradeStock(t, -q, true); v -= q * s.p;
+  }
+}
+
+function corpTax() {
+  let total = 0; const fiscB = G.execs.fisc ? (G.execs.fisc.trait === 'Agressif' ? .15 : G.execs.fisc.skill / 1000) : 0;
+  for (const c in G.tb) {
+    const base = G.tb[c] + (G.carry[c] || 0);
+    if (base > 0) { const t = base * CO(c).is * (1 - fiscB); total += t; G.carry[c] = 0; }
+    else G.carry[c] = base;
+  }
+  G.tb = {};
+  if (total > 0) { G.hold -= total; G.ytd.is += total; G.tot.is += total; news('info', `🧾 Impôt sur les sociétés du mois : ${eur(total)}.`); }
+  G.taxHist.push(total); if (G.taxHist.length > 36) G.taxHist.shift();
+}
+
+function checkSolvency() {
+  const lim = overdraftLimit();
+  if (G.hold < -lim) {
+    G.odDays++;
+    if (G.odDays === 1) news('bad', `⚠️ Votre holding dépasse son découvert autorisé (${eur(lim)}). La banque vous laisse 30 jours pour régulariser.`, true);
+    if (G.odDays >= 30) {
+      G.odDays = 0; G.score = Math.max(300, G.score - 80);
+      if (!forcedLiquidation()) {
+        const need = -G.hold - lim;
+        if (G.perso > 0) { const x = Math.min(G.perso, need); G.perso -= x; G.hold += x; news('bad', `🔒 Caution personnelle actionnée : ${eur(x)} prélevés sur votre compte personnel.`); }
+        else if (G.lux.length) { const it = G.lux.sort((a, b) => b.v - a.v)[0]; G.hold += it.v * .7; G.lux = G.lux.filter(x => x !== it); news('bad', `🔒 Saisie personnelle : votre ${LUX[it.i].n} est vendu aux enchères pour ${eur(it.v * .7)}.`); }
+        else if (G.hold < -lim) { gameOver('Liquidation judiciaire : votre holding ne peut plus honorer ses dettes et vous n\'avez plus d\'actifs à céder.'); }
+      }
+    }
+  } else G.odDays = 0;
+  if (netWorth() < -1e5 && G.hold < 0 && !G.biz.length && !G.props.length && !G.projs.length) gameOver('Faillite : votre patrimoine net est négatif et vous n\'avez plus aucune source de revenus.');
+}
+function forcedLiquidation() {
+  const assets = [];
+  if (portValue() > 0) assets.push({ k: 'port', v: portValue() });
+  G.biz.forEach(b => assets.push({ k: 'biz', id: b.id, v: bizValue(b), n: b.name }));
+  G.props.forEach(p => assets.push({ k: 'prop', id: p.id, v: propValue(p), n: p.name }));
+  if (!assets.length) return false;
+  assets.sort((a, b) => a.v - b.v);
+  const need = -G.hold; const a = assets.find(x => x.v >= need * .5) || assets[assets.length - 1];
+  if (a.k === 'port') { sellPortfolioValue(a.v); news('bad', `🔒 Liquidation forcée de votre portefeuille boursier par la banque.`, true); return true; }
+  const price = a.v * .7;
+  repayLoansOn({ k: a.k, id: a.id });
+  seizeAsset({ k: a.k, id: a.id }); G.hold += price;
+  news('bad', `🔒 Vente forcée par la banque : ${a.n} cédé à prix cassé (${eur(price)}).`, true);
+  return true;
+}
+function gameOver(msg) { G.over = true; G.overMsg = msg; news('bad', '☠️ ' + msg); }
+
+/* ==========================================================================
+   ACTIONS DU JOUEUR
+   ========================================================================== */
+function payDividend(amount, auto) {
+  amount = Math.min(amount, Math.max(0, G.hold));
+  if (amount <= 0) return 0;
+  const tr = divTaxRate(), tax = amount * tr;
+  G.hold -= amount; G.perso += amount - tax; G.ytd.div += tax; G.tot.div += tax; G.ytd.divPaid += amount;
+  news('info', `💶 ${auto ? 'Dividende automatique (train de vie)' : 'Dividende versé'} : ${eur(amount)} brut, impôt ${eur(tax)} (${pct(tr)} — ${CO(ptc()).n}), net ${eur(amount - tax)}.`);
+  return amount - tax;
+}
+function contribute(amount) { amount = Math.min(amount, G.perso); if (amount <= 0) return; G.perso -= amount; G.hold += amount; G.contrib += amount; news('info', `💼 Apport en compte courant d'associé : ${eur(amount)} vers la holding.`); }
+
+function tradeStock(t, q, forced) {
+  const s = G.stocks.find(x => x.t === t); if (!s || !q) return false;
+  const val = Math.abs(q) * s.p, fee = Math.max(10, val * .0015);
+  if (q > 0) {
+    if (G.hold - val - fee < 0 && !forced) return false;
+    G.hold -= val + fee; const h = G.port[t] || (G.port[t] = { q: 0, cost: 0 }); h.cost += val + fee; h.q += q;
+  } else {
+    const h = G.port[t]; if (!h) return false; q = Math.min(-q, h.q);
+    const v = q * s.p, basis = h.cost * q / h.q;
+    G.hold += v - fee; h.cost -= basis; h.q -= q;
+    G.tb[G.holdC] = (G.tb[G.holdC] || 0) + (v - fee - basis);
+    if (h.q <= 0) delete G.port[t];
+  }
+  return true;
+}
+
+function acquireListing(L, fin) {
+  const ci = CITY[L.city], C = CO(ci.c);
+  if (L.kind === 'biz') {
+    const tax = L.price * C.fmut, total = L.price + tax + 5000;
+    const q = fin && fin.amount > 0 ? loanQuote({ type: 'biz', amount: fin.amount, months: fin.months, fixed: fin.fixed, value: L.price, income: L.estE, country: ci.c }) : null;
+    if (q && !q.ok) return 'Financement refusé';
+    const loanAmt = q ? fin.amount : 0;
+    if (G.hold + loanAmt - (q ? q.fees : 0) < total) return 'Trésorerie insuffisante pour l\'apport';
+    const b = L.b; b.cost = L.price; b.bought = G.day; b.floor = (250000 * b.size * cityPrice(ci)) * .5; b.h = [];
+    G.hold -= total; G.tb[ci.c] = (G.tb[ci.c] || 0) - tax;
+    G.biz.push(b);
+    if (q) createLoan({ type: 'biz', amount: loanAmt, months: fin.months, col: { k: 'biz', id: b.id }, country: ci.c }, q, `Acquisition ${b.name}`);
+    news('good', `🖊️ Acquisition de ${b.name} (${ci.n}) pour ${eur(L.price)} + ${eur(tax)} de droits.`);
+  } else if (L.kind === 're') {
+    const tax = L.price * C.mut, total = L.price + tax;
+    const p = L.p;
+    const value = propValue(p);
+    const q = fin && fin.amount > 0 ? loanQuote({ type: 're', amount: fin.amount, months: fin.months, fixed: fin.fixed, value: Math.min(value, L.price), income: propNetMonthly(p), country: ci.c }) : null;
+    if (q && !q.ok) return 'Financement refusé';
+    const loanAmt = q ? fin.amount : 0;
+    if (G.hold + loanAmt - (q ? q.fees : 0) < total) return 'Trésorerie insuffisante pour l\'apport';
+    p.cost = total; p.bought = G.day;
+    G.hold -= total; G.props.push(p);
+    if (q) createLoan({ type: 're', amount: loanAmt, months: fin.months, col: { k: 'prop', id: p.id }, country: ci.c }, q, `Hypothèque ${p.name}`);
+    news('good', `🖊️ Acquisition de ${p.name} (${p.m2.toLocaleString('fr-FR')} m²) pour ${eur(L.price)} + ${eur(tax)} de droits de mutation.`);
+  } else {
+    const type = fin.ptype, tax = L.price * C.mut;
+    const { build } = landRef(ci, type, L.m2);
+    const total = L.price + tax + build;
+    const q = fin.amount > 0 ? loanQuote({ type: 'promo', amount: fin.amount, months: fin.months, fixed: fin.fixed, value: total, country: ci.c, extraCost: build }) : null;
+    if (q && !q.ok) return 'Financement refusé';
+    const loanAmt = q ? fin.amount : 0;
+    const escrow = Math.max(0, loanAmt - (L.price + tax));
+    const cashNeed = Math.max(0, L.price + tax - loanAmt) + (q ? q.fees : 0);
+    if (G.hold < cashNeed) return 'Trésorerie insuffisante pour l\'apport';
+    const permDays = Math.round(120 * C.bur * (G.execs.jur ? .7 : 1) * rnd(.8, 1.3));
+    const p = { id: uid(), type, city: L.city, m2: L.m2, name: `${RT[type].n} « ${L.name.split('— ')[1] || ci.n} », ${ci.n}`, phase: 'permis', t0: G.day, end: G.day + permDays, landCost: L.price + tax, budget: build, spent: 0, over: 0, escrow: 0 };
+    G.projs.push(p);
+    if (q) { const l = createLoan({ type: 'promo', amount: loanAmt, months: fin.months, col: { k: 'proj', id: p.id }, country: ci.c }, q, `Crédit promoteur ${p.name}`); G.hold -= loanAmt; }
+    G.hold -= Math.max(0, L.price + tax - loanAmt); p.escrow = escrow;
+    news('good', `🖊️ Achat du terrain (${L.m2.toLocaleString('fr-FR')} m² constructibles) à ${ci.n} pour ${eur(L.price)}. Dépôt du permis de construire : décision attendue sous ~${permDays} jours.`);
+  }
+  G.listings = G.listings.filter(x => x !== L);
+  G.stats.bought++;
+  return null;
+}
+
+function sellBiz(b, price) {
+  const ci = CITY[b.city];
+  repayLoansOn({ k: 'biz', id: b.id });
+  const fees = price * .04; G.hold += price - fees;
+  G.tb[ci.c] = (G.tb[ci.c] || 0) + (price - fees - b.cost - fleetValue(b) * 0);
+  G.biz = G.biz.filter(x => x !== b);
+  news('good', `🤝 Cession de ${b.name} pour ${eur(price)} (frais ${eur(fees)}).`);
+}
+function sellProp(p, mode) {
+  const ci = CITY[p.city];
+  if (mode === 'bloc') {
+    const price = propValue(p) * .88, fees = price * .02;
+    repayLoansOn({ k: 'prop', id: p.id }); G.hold += price - fees;
+    G.tb[ci.c] = (G.tb[ci.c] || 0) + (price - fees - p.cost);
+    G.props = G.props.filter(x => x !== p);
+    news('good', `🏢 ${p.name} vendu en bloc pour ${eur(price)}.`);
+  } else {
+    const lots = Math.max(2, Math.round(p.m2 / 65));
+    p.sale = { lots, left: lots, done: 0, start: G.day };
+    news('info', `🏷️ ${p.name} mis en vente au détail : ${lots} lots.`);
+  }
+}
+
+/* ---------------- Résolution des décisions */
+const DEC = {
+  ok: () => { },
+  greve_ok: a => { const b = G.biz.find(x => x.id === a.b); if (b) { b.raise = (b.raise || 1) * 1.04; news('info', `Accord salarial à ${b.name} : +4 %.`); } },
+  greve_no: a => { const b = G.biz.find(x => x.id === a.b); if (b) { const d = ri(4, 12); b.closedUntil = G.day + d; b.rep -= 5; news('bad', `Grève à ${b.name} : ${d} jours de fermeture.`); } },
+  fraud_sue: a => { const b = G.biz.find(x => x.id === a.b); if (b) b.dir = null; G.hold -= 15000; if (R() < .4) { G.hold += a.amt / 2; news('good', `Le tribunal vous restitue ${eur(a.amt / 2)}.`); } else news('bad', 'La procédure n\'a rien permis de récupérer.'); },
+  fraud_fire: a => { const b = G.biz.find(x => x.id === a.b); if (b) b.dir = null; },
+  sell_offer: a => { const b = G.biz.find(x => x.id === a.b); if (b) sellBiz(b, a.offer); },
+  permit_appeal: a => { const p = G.projs.find(x => x.id === a.p); if (!p) return; G.hold -= 50000; if (R() < .6 + (G.execs.jur ? .15 : 0)) { p.phase = 'permis'; p.appeal = true; p.end = G.day + 120; news('good', `Recours accepté pour ${p.name} : instruction relancée.`); } else { news('bad', `Recours rejeté pour ${p.name}. Terrain revendu.`); DEC.permit_quit(a); } },
+  permit_quit: a => { const p = G.projs.find(x => x.id === a.p); if (!p) return; const v = p.landCost * .85; repayLoansOn({ k: 'proj', id: p.id }); G.hold += v + (p.escrow || 0); G.tb[CITY[p.city].c] = (G.tb[CITY[p.city].c] || 0) - (p.landCost - v); G.projs = G.projs.filter(x => x !== p); news('info', `Terrain revendu ${eur(v)}.`); },
+  sell_bloc: a => { const p = G.props.find(x => x.id === a.p); if (p) sellProp(p, 'bloc'); },
+  sell_retail: a => { const p = G.props.find(x => x.id === a.p); if (p) sellProp(p, 'retail'); },
+  squat_law: a => { const p = G.props.find(x => x.id === a.p); if (!p) return; G.hold -= 8000; p.squat = G.day + Math.round((CITY[p.city].c === 'FR' ? ri(120, 365) : ri(45, 150)) * (G.execs.jur ? .7 : 1)); },
+  squat_pay: a => { G.hold -= 35000; news('info', 'Départ négocié des occupants.'); },
+  tax_pay: a => { G.hold -= a.amt; G.ytd.other += a.amt; G.tot.other += a.amt; },
+  tax_fight: a => { G.hold -= 40000; if (R() < .35 + (G.execs.jur ? G.execs.jur.skill / 200 : 0)) news('good', '⚖️ Victoire au tribunal administratif : redressement annulé.'); else { const x = a.amt * 1.4; G.hold -= x; G.ytd.other += x; G.tot.other += x; news('bad', `⚖️ Défaite au tribunal : ${eur(x)} à payer (pénalités incluses).`); } },
+};
+function resolveDecision(id, idx) {
+  const d = G.pending.find(x => x.id === id); if (!d) return;
+  const c = d.choices[idx]; G.pending = G.pending.filter(x => x !== d);
+  (DEC[c.k] || DEC.ok)(c.a || {});
+}
+
+
+/* ==========================================================================
+   Illustrations SVG générées des établissements contrôlés
+   ========================================================================== */
+function hsh(s) { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
+function mb32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+function art(kind, seed, label, o = {}) {
+  const r = mb32(hsh(seed + kind)), id = 'a' + (hsh(seed + kind) % 1e7);
+  const F = 'font-family="IBM Plex Sans,Helvetica,sans-serif"';
+  const sky = (a, b) => `<defs><linearGradient id="${id}s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="400" height="225" fill="url(#${id}s)"/>`;
+  const city = (n, y0, light) => { let s = ''; for (let i = 0; i < n; i++) { const w = 40 + r() * 40, x = i * (420 / n) - 10, h = 40 + r() * 80; s += `<rect x="${x.toFixed(0)}" y="${(y0 - h).toFixed(0)}" width="${w.toFixed(0)}" height="${h.toFixed(0)}" fill="hsl(${210 + r() * 25},${light ? 12 : 25}%,${light ? 58 + r() * 14 : 10 + r() * 8}%)"/>`; } return s; };
+  const people = (n, y, dark) => { let s = ''; for (let i = 0; i < n; i++) { const x = 20 + r() * 360; s += `<circle cx="${x.toFixed(0)}" cy="${y}" r="4.5" fill="${dark ? '#111' : '#3b3b3b'}"/><rect x="${(x - 5).toFixed(0)}" y="${y + 4}" width="10" height="15" rx="3" fill="hsl(${(r() * 360).toFixed(0)},${dark ? 20 : 45}%,${dark ? 18 : 42}%)"/>`; } return s; };
+  let s = '';
+  switch (kind) {
+    case 'fastfood': {
+      const c = `hsl(${[0, 18, 42, 350, 145][Math.floor(r() * 5)]},78%,48%)`;
+      s += sky('#7fb6ec', '#dcecff') + city(7, 175, true) + `<rect y="188" width="400" height="37" fill="#8d96a0"/>`;
+      s += `<rect x="70" y="70" width="260" height="120" fill="#f3eee4"/><rect x="78" y="54" width="244" height="28" rx="5" fill="${c}"/>`;
+      s += `<text x="200" y="73" text-anchor="middle" ${F} font-weight="700" font-size="14" fill="#fff">${esc(label)}</text>`;
+      for (let i = 0; i < 13; i++) s += `<rect x="${70 + i * 20}" y="86" width="20" height="14" fill="${i % 2 ? '#fff' : c}"/>`;
+      s += `<path d="M70 100 ${'q10 9 20 0 '.repeat(13)}Z" fill="${c}"/>`;
+      s += `<rect x="84" y="116" width="150" height="66" fill="#ffe7a0"/><line x1="134" y1="116" x2="134" y2="182" stroke="#c9b27a"/><line x1="184" y1="116" x2="184" y2="182" stroke="#c9b27a"/>`;
+      s += `<rect x="252" y="116" width="62" height="74" fill="#39404c"/><rect x="282" y="116" width="2" height="74" fill="#596273"/><circle cx="350" cy="80" r="16" fill="${c}"/><text x="350" y="86" text-anchor="middle" font-size="16">🍔</text>`;
+      s += people(6, 194);
+      break;
+    }
+    case 'nightclub': {
+      const hue = [300, 280, 190, 330, 220][Math.floor(r() * 5)];
+      s += sky('#05030c', '#1d0f35') + city(8, 170, false) + `<rect y="185" width="400" height="40" fill="#121018"/>`;
+      for (let i = 0; i < 4; i++) { const x = 60 + i * 95; s += `<polygon points="${x},185 ${x - 40 - r() * 30},0 ${x + 10 + r() * 30},0" fill="hsl(${hue + i * 30},90%,70%)" opacity=".08"/>`; }
+      s += `<rect x="60" y="62" width="280" height="125" fill="#17121f" stroke="hsl(${hue},80%,55%)" stroke-width="1"/>`;
+      s += `<defs><filter id="${id}g" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+      s += `<text x="200" y="100" text-anchor="middle" ${F} font-weight="700" font-size="24" fill="hsl(${hue},100%,75%)" filter="url(#${id}g)" letter-spacing="2">${esc(label.toUpperCase())}</text>`;
+      s += `<rect x="170" y="120" width="60" height="67" fill="#000" stroke="hsl(${hue},90%,60%)"/><rect x="176" y="126" width="48" height="61" fill="hsl(${hue},60%,22%)"/>`;
+      s += `<line x1="235" y1="178" x2="330" y2="178" stroke="#b01c3a" stroke-width="3"/>${[240, 285, 330].map(x => `<rect x="${x - 2}" y="168" width="4" height="20" fill="#c9a227"/>`).join('')}`;
+      s += `<circle cx="150" cy="160" r="6" fill="#000"/><rect x="143" y="166" width="14" height="22" rx="3" fill="#000"/>`;
+      for (let i = 0; i < 7; i++) { const x = 245 + i * 13; s += `<circle cx="${x}" cy="${172 - r() * 3}" r="4" fill="#0a0a0a"/><rect x="${x - 4}" y="176" width="8" height="12" rx="2" fill="hsl(${(r() * 360).toFixed(0)},40%,25%)"/>`; }
+      break;
+    }
+    case 'yacht': {
+      s += sky('#f7a35c', '#6a72d8') + `<circle cx="${80 + r() * 240}" cy="110" r="26" fill="#ffd27a" opacity=".9"/>`;
+      s += `<path d="M0 120 Q60 ${70 + r() * 20} 120 105 T240 ${85 + r() * 20} T400 100 V140 H0Z" fill="#3c3a62" opacity=".85"/>`;
+      s += `<rect y="130" width="400" height="95" fill="#1b4f8a"/>`;
+      for (let i = 0; i < 9; i++) s += `<path d="M${r() * 400} ${145 + r() * 75} q8 -4 16 0" stroke="#7fb2e5" fill="none" opacity=".6"/>`;
+      const n = clamp(o.n || 1, 1, 4);
+      for (let k = 0; k < n; k++) {
+        const sc = n === 1 ? 1 : .75 - k * .08, x0 = n === 1 ? 70 : 20 + k * (330 / n), y0 = 150 + k * 12;
+        s += `<g transform="translate(${x0},${y0}) scale(${sc})"><path d="M0 0 H250 L225 30 H25 Z" fill="#fafafa"/><path d="M0 0 H250 L245 6 H4Z" fill="#1d2a3a"/><path d="M40 0 L70 -28 H190 L215 0Z" fill="#f2f2f2"/><rect x="78" y="-20" width="100" height="8" fill="#1f2b38"/><path d="M95 -28 L110 -46 H170 L180 -28Z" fill="#ececec"/><rect x="118" y="-41" width="48" height="6" fill="#1f2b38"/><line x1="150" y1="-46" x2="150" y2="-64" stroke="#ddd" stroke-width="2"/><path d="M25 30 H225" stroke="#0e2f55" stroke-width="2"/></g>`;
+      }
+      s += `<text x="12" y="24" ${F} font-weight="700" font-size="15" fill="#fff">${esc(label)}</text>`;
+      break;
+    }
+    case 'cardealer': {
+      const c = `hsl(${[0, 50, 210, 0, 120][Math.floor(r() * 5)]},75%,${r() < .3 ? 15 : 45}%)`;
+      s += sky('#8cc0ef', '#e4f1ff') + city(6, 160, true) + `<rect y="190" width="400" height="35" fill="#a7adb5"/>`;
+      s += `<rect x="40" y="70" width="320" height="120" fill="#bcd8ee" opacity=".85" stroke="#6d7c8b" stroke-width="2"/>`;
+      for (let i = 1; i < 6; i++) s += `<line x1="${40 + i * 53}" y1="70" x2="${40 + i * 53}" y2="190" stroke="#6d7c8b" stroke-width="2"/>`;
+      s += `<rect x="40" y="52" width="320" height="22" fill="#20262e"/><text x="200" y="68" text-anchor="middle" ${F} font-weight="600" font-size="13" fill="#e8c46a" letter-spacing="1.5">${esc(label.toUpperCase())}</text>`;
+      s += `<g transform="translate(110,140)"><path d="M0 38 Q4 20 30 16 L70 2 Q110 -6 140 10 L178 18 Q190 22 190 38 Z" fill="${c}"/><path d="M62 8 L76 -1 Q105 -6 128 8 Z" fill="#26313c"/><circle cx="42" cy="40" r="11" fill="#111"/><circle cx="42" cy="40" r="5" fill="#999"/><circle cx="150" cy="40" r="11" fill="#111"/><circle cx="150" cy="40" r="5" fill="#999"/></g>`;
+      for (const x of [20, 380]) s += `<line x1="${x}" y1="190" x2="${x}" y2="40" stroke="#777" stroke-width="2"/><rect x="${x}" y="40" width="${x < 200 ? 22 : -22}" height="30" fill="${c}"/>`;
+      break;
+    }
+    case 'hotel': {
+      s += sky('#9cc6ee', '#eaf3fb') + `<rect y="195" width="400" height="30" fill="#9aa2aa"/>`;
+      const fl = 6, base = `hsl(${30 + r() * 20},${25 + r() * 15}%,${78 + r() * 8}%)`;
+      s += `<rect x="70" y="30" width="260" height="165" fill="${base}"/><rect x="62" y="24" width="276" height="10" fill="#6b5d4a"/>`;
+      for (let f = 0; f < fl; f++) for (let i = 0; i < 9; i++) s += `<rect x="${82 + i * 27}" y="${42 + f * 22}" width="15" height="14" fill="${r() < .55 ? '#ffe3a1' : '#5d6b7a'}"/>`;
+      s += `<path d="M160 172 H240 L250 185 H150Z" fill="#7a1e2c"/><rect x="180" y="185" width="40" height="10" fill="#3b2f25"/>`;
+      s += `<text x="200" y="20" text-anchor="middle" ${F} font-weight="700" font-size="14" fill="#2b2b2b">${esc(label)} ★★★★★</text>`;
+      for (const x of [95, 305]) s += `<line x1="${x}" y1="34" x2="${x}" y2="6" stroke="#555"/><rect x="${x}" y="6" width="16" height="10" fill="#1f4e8c"/>`;
+      s += people(4, 196);
+      break;
+    }
+    default: { // immobilier
+      const prog = o.prog == null ? 1 : o.prog;
+      s += sky('#90c2ee', '#e6f2fc') + city(6, 170, true) + `<rect y="190" width="400" height="35" fill="#95a0aa"/>`;
+      if (kind === 'luxe') {
+        s += `<rect x="40" y="150" width="320" height="40" fill="#4aa3d8"/><rect x="40" y="150" width="320" height="6" fill="#e9f6ff" opacity=".6"/>`;
+        s += `<rect x="90" y="${150 - 90 * prog}" width="220" height="${90 * prog}" fill="#f8f6f1"/>`;
+        if (prog >= 1) { for (let i = 0; i < 6; i++) s += `<rect x="${100 + i * 35}" y="78" width="25" height="28" fill="#2e4b62"/><rect x="${100 + i * 35}" y="114" width="25" height="30" fill="#2e4b62"/>`; s += `<rect x="80" y="62" width="240" height="8" fill="#e3dfd5"/>`; }
+        for (const x of [55, 345]) s += `<rect x="${x - 3}" y="90" width="6" height="60" fill="#7b5a3a"/><path d="M${x} 90 q-25 -5 -35 10 M${x} 90 q25 -5 35 10 M${x} 90 q-12 -20 -28 -18 M${x} 90 q12 -20 28 -18" stroke="#2f7d3b" stroke-width="5" fill="none"/>`;
+      } else {
+        const tall = kind === 'bureaux' ? 150 : kind === 'commerce' ? 70 : 120, w = kind === 'bureaux' ? 140 : 220, x0 = 200 - w / 2;
+        const h = tall * prog, col = kind === 'bureaux' ? '#7fb0d6' : kind === 'studios' ? `hsl(${(r() * 360).toFixed(0)},45%,70%)` : kind === 'commerce' ? '#e7d8c3' : '#e9e2d6';
+        s += `<rect x="${x0}" y="${190 - h}" width="${w}" height="${h}" fill="${col}"/>`;
+        const rows = Math.floor(h / 18), cols = Math.floor(w / 24);
+        for (let f = 0; f < rows; f++) for (let i = 0; i < cols; i++) s += `<rect x="${x0 + 8 + i * 24}" y="${190 - h + 6 + f * 18}" width="${kind === 'bureaux' ? 18 : 12}" height="11" fill="${kind === 'bureaux' ? '#cfe6f7' : r() < .5 ? '#ffe6a6' : '#55636f'}" opacity=".9"/>`;
+        if (kind === 'commerce') s += `<rect x="${x0}" y="160" width="${w}" height="30" fill="#c43d3d"/>`;
+      }
+      if (prog < 1) {
+        s += `<line x1="330" y1="190" x2="330" y2="25" stroke="#e8b422" stroke-width="5"/><line x1="200" y1="30" x2="380" y2="30" stroke="#e8b422" stroke-width="4"/><line x1="230" y1="30" x2="230" y2="${70 + 60 * prog}" stroke="#333"/><rect x="222" y="${70 + 60 * prog}" width="16" height="10" fill="#777"/>`;
+        s += `<rect x="${12}" y="200" width="${(376 * prog).toFixed(0)}" height="8" fill="#e8b422"/><rect x="12" y="200" width="376" height="8" fill="none" stroke="#333"/>`;
+      }
+      s += `<text x="12" y="22" ${F} font-weight="700" font-size="14" fill="#1d2733">${esc(label)}</text>`;
+    }
+  }
+  return `<svg viewBox="0 0 400 225" xmlns="http://www.w3.org/2000/svg" class="art" role="img" aria-label="${esc(label)}">${s}</svg>`;
+}
+
+/* ==========================================================================
+   CONSOLE DE PILOTAGE — interface
+   ========================================================================== */
+const UI = { page: 'dash', city: null, biz: null, buy: null, loan: { type: 'treso', col: '', amount: 500000, months: 60, fixed: true }, jf: 'all', dirC: null, luxCat: 'Montres' };
+const $ = s => document.querySelector(s);
+const SAVE_KEY = 'empire_console_v1';
+const NAV = [
+  ['dash', 'Tableau de bord'], ['monde', 'Carte d\'Europe'], ['biz', 'Entreprises'], ['immo', 'Immobilier'], ['banque', 'Banque & crédit'],
+  ['bourse', 'Bourse'], ['direction', 'Direction'], ['luxe', 'Luxe & résidence'], ['fisc', 'Juridictions'], ['classement', 'Classement'], ['journal', 'Journal'],
+];
+const cls = n => n > 0 ? 'pos' : n < 0 ? 'neg' : '';
+const signed = n => (n > 0 ? '+' : '') + eur(n);
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(G)); } catch (e) { } }
+function load() { try { const s = localStorage.getItem(SAVE_KEY); if (s) { G = JSON.parse(s); return true; } } catch (e) { } return false; }
+function toast(msg, bad) { const t = $('#toast'); t.textContent = msg; t.className = 'show' + (bad ? ' bad' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = '', 2600); }
+function modal(html, wide) { const m = $('#modal'); m.innerHTML = `<div class="mbox${wide ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div>`; m.className = 'open'; }
+function closeModal() { $('#modal').className = ''; $('#modal').innerHTML = ''; UI.buy = null; }
+
+/* ---------------- graphiques */
+function spark(arr, w = 120, h = 30, col) {
+  if (!arr || arr.length < 2) return '';
+  const mn = Math.min(...arr), mx = Math.max(...arr), d = mx - mn || 1;
+  const pts = arr.map((v, i) => [(i / (arr.length - 1)) * w, h - 2 - (v - mn) / d * (h - 4)]);
+  const c = col || (arr[arr.length - 1] >= arr[0] ? 'var(--good)' : 'var(--bad)');
+  const p = pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const last = pts[pts.length - 1];
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="spark"><polygon points="0,${h} ${p} ${w},${h}" fill="${c}" opacity=".12"/><polyline points="${p}" fill="none" stroke="${c}" stroke-width="1.5"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="${c}"/></svg>`;
+}
+function bigChart(pts, fmtY) {
+  if (pts.length < 2) return '<div class="muted small">Pas encore assez d\'historique : avancez de quelques semaines.</div>';
+  const W = 640, H = 200, P = 74, ys = pts.map(p => p[1]); let mn = Math.min(...ys), mx = Math.max(...ys); const pad = (mx - mn) * .08 || Math.abs(mx) * .05 || 1; mn -= pad; mx += pad; const d = mx - mn;
+  const X = i => P + (i / (pts.length - 1)) * (W - P - 10), Y = v => H - 22 - (v - mn) / d * (H - 34);
+  const poly = pts.map((p, i) => X(i).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' ');
+  let g = '';
+  for (let k = 0; k <= 4; k++) { const v = mn + d * k / 4; g += `<line x1="${P}" x2="${W - 10}" y1="${Y(v)}" y2="${Y(v)}" class="grid"/><text x="${P - 6}" y="${Y(v) + 4}" text-anchor="end" class="ax">${fmtY(v)}</text>`; }
+  g += `<text x="${P}" y="${H - 4}" class="ax">${sdate(pts[0][0])}</text><text x="${W - 10}" y="${H - 4}" text-anchor="end" class="ax">${sdate(pts[pts.length - 1][0])}</text>`;
+  const l = pts.length - 1;
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart">${g}<polygon points="${X(0)},${Y(mn)} ${poly} ${X(l)},${Y(mn)}" fill="var(--accent)" opacity=".1"/><polyline points="${poly}" fill="none" stroke="var(--accent)" stroke-width="2"/><circle cx="${X(l)}" cy="${Y(pts[l][1])}" r="4" fill="var(--accent)"/></svg>`;
+}
+const bar = (v, max = 100, col) => `<span class="bar"><i style="width:${clamp(v / max * 100, 0, 100)}%;${col ? 'background:' + col : ''}"></i></span>`;
+const pill = (t, k) => `<span class="pill ${k || ''}">${t}</span>`;
+
+/* ---------------- rendu principal */
+function render() {
+  if (!G) return renderStart();
+  $('#start').style.display = 'none'; $('#app').style.display = '';
+  renderTop();
+  $('#nav').innerHTML = NAV.map(([k, n]) => `<button class="nv${UI.page === k || (k === 'monde' && UI.page === 'ville') || (k === 'biz' && UI.page === 'bizd') ? ' on' : ''}" onclick="A.go('${k}')">${n}${k === 'dash' && G.pending.length ? `<b class="badge">${G.pending.length}</b>` : ''}</button>`).join('') +
+    `<div class="navfoot"><button class="ghost" onclick="A.help()">Guide du jeu</button><button class="ghost" onclick="A.saveMenu()">Sauvegarde</button></div>`;
+  const P = PAGES[UI.page] || PAGES.dash;
+  $('#main').innerHTML = P();
+  if (G.over) modal(`<h2>Fin de partie</h2><p>${esc(G.overMsg)}</p><p>Patrimoine final : <b>${eur(netWorth())}</b> après ${G.day} jours.</p><div class="row"><button class="primary" onclick="A.reset()">Nouvelle partie</button></div>`);
+}
+function renderTop() {
+  const nw = netWorth(), e = G.eco, prev = G.nwh.length > 1 ? G.nwh[G.nwh.length - 2][1] : nw;
+  $('#top').innerHTML = `
+  <div class="brand">EMPIRE<span>${esc(G.name)}</span></div>
+  <div class="tdate"><b>${fdate(G.day)}</b><span>Jour ${G.day + 1} · ${PH[e.phase].n}</span></div>
+  <div class="kpis">
+    <div class="k"><span>Patrimoine net</span><b class="${cls(nw)}">${eur(nw)}</b><i class="${cls(nw - prev)}">${signed(nw - prev)} / sem.</i></div>
+    <div class="k"><span>Trésorerie holding</span><b class="${cls(G.hold)}">${eur(G.hold)}</b></div>
+    <div class="k"><span>Compte personnel</span><b class="${cls(G.perso)}">${eur(G.perso)}</b></div>
+    <div class="k"><span>Dette bancaire</span><b>${eur(debtTotal())}</b></div>
+    <div class="k"><span>Score crédit</span><b class="${G.score >= 700 ? 'pos' : G.score < 550 ? 'neg' : ''}">${G.score}</b></div>
+  </div>
+  <div class="adv">
+    <button class="primary big" onclick="A.adv(1)" title="Raccourci : touche N">Jour suivant ▸</button>
+    <button onclick="A.adv(7)">+7 j</button><button onclick="A.adv(30)">+30 j</button>
+  </div>`;
+}
+
+/* ---------------- écran de démarrage */
+function renderStart() {
+  $('#app').style.display = 'none'; $('#start').style.display = '';
+  const opts = CITIES.map(c => `<option value="${c.id}"${c.id === 'paris' ? ' selected' : ''}>${CO(c.c).f} ${c.n}</option>`).join('');
+  const copts = sel => Object.entries(COUNTRIES).map(([k, c]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${c.f} ${c.n}</option>`).join('');
+  $('#start').innerHTML = `<div class="startbox">
+    <div class="logo">EMPIRE</div>
+    <p class="lede">Simulation d'entrepreneur au jour le jour, sur 22 métropoles européennes. Franchises, clubs, yachts, concessions de luxe, hôtels et promotion immobilière, financés par une vraie banque et soumis à la fiscalité de chaque pays. Objectif : finir premier du classement des fortunes. Une mauvaise dette peut tout emporter.</p>
+    <div class="form">
+      <label for="s_name">Nom de l'entrepreneur</label><input id="s_name" value="Alexandre Delmas">
+      <label for="s_nat">Nationalité</label><select id="s_nat">${copts('FR')}</select>
+      <label for="s_res">Résidence fiscale</label><select id="s_res">${opts}</select>
+      <label for="s_hold">Siège de la holding</label><select id="s_hold">${copts('FR')}</select>
+      <label for="s_cap">Capital de départ</label>
+      <select id="s_cap"><option value="2000000">2 M€ — Self-made (difficile)</option><option value="5000000" selected>5 M€ — Entrepreneur (normal)</option><option value="20000000">20 M€ — Héritier (facile)</option></select>
+    </div>
+    <div class="row"><button class="primary big" onclick="A.start()">Fonder la holding</button>${(() => { try { return localStorage.getItem(SAVE_KEY) ? '<button class="big" onclick="A.continue()">Reprendre la partie sauvegardée</button>' : ''; } catch (e) { return ''; } })()}<button class="big ghost" onclick="A.import()">Importer une sauvegarde</button></div>
+    <p class="muted small">Les barèmes fiscaux sont simplifiés à partir des régimes 2025-2026. Les marques d'entreprises cotées et d'enseignes sont fictives.</p>
+  </div>`;
+}
+
+/* ---------------- PAGES */
+const PAGES = {};
+PAGES.dash = () => {
+  const e = G.eco, inc = monthlyIncome(), nw = netWorth();
+  const pend = G.pending.map(d => `<div class="decision"><div class="dh">${esc(d.title)}<span class="muted small">${sdate(d.d)}</span></div><p>${esc(d.text)}</p><div class="row">${d.choices.map((c, i) => `<button class="${i === 0 ? 'primary' : ''}" onclick="A.decide('${d.id}',${i})">${esc(c.l)}</button>`).join('')}</div></div>`).join('');
+  const ranks = rankList(); const myRank = ranks.findIndex(r => r.me) + 1;
+  const shocks = e.shocks.filter(s => s.until > G.day).map(s => pill({ pandemie: 'Pandémie', energie: 'Choc énergétique', tourisme: 'Boom touristique', immo: 'Crise immobilière' }[s.k], s.k === 'tourisme' ? 'good' : 'bad')).join(' ') + (e.crash > 0 ? pill('Krach en cours', 'bad') : '');
+  const assets = [
+    ['Entreprises', G.biz.reduce((a, b) => a + bizValue(b), 0)], ['Immobilier', G.props.reduce((a, p) => a + propValue(p), 0)], ['Chantiers', G.projs.reduce((a, p) => a + projBook(p) + (p.escrow || 0), 0)],
+    ['Portefeuille boursier', portValue()], ['Biens de luxe', luxValue()], ['Liquidités', G.hold + G.perso + G.monacoDep], ['Dettes', -debtTotal()]];
+  return `
+  ${pend ? `<section class="card alert"><h2>Décisions en attente <span class="muted small">— le temps est suspendu jusqu'à votre réponse</span></h2>${pend}</section>` : ''}
+  <div class="grid g3">
+    <section class="card span2"><h2>Évolution du patrimoine net</h2>${bigChart(G.nwh, v => eur(v))}</section>
+    <section class="card"><h2>Bilan consolidé</h2><table class="t">${assets.map(([n, v]) => `<tr><td>${n}</td><td class="num ${v < 0 ? 'neg' : ''}">${eur(v)}</td></tr>`).join('')}<tr class="tot"><td>Patrimoine net</td><td class="num">${eur(nw)}</td></tr></table>
+      <div class="kv"><span>Revenu opérationnel (30 j)</span><b class="${cls(inc)}">${eur(inc)}/mois</b></div>
+      <div class="kv"><span>Échéances bancaires</span><b>${eur(G.loans.reduce((a, l) => a + loanPaymentMonthly(l), 0))}/mois</b></div>
+      <div class="kv"><span>Train de vie</span><b>${eur(G.lastLife || 0)}/mois</b></div>
+      <div class="kv"><span>Classement</span><b>${myRank}<sup>e</sup> / ${ranks.length}</b></div></section>
+  </div>
+  <div class="grid g3">
+    <section class="card"><h2>Conjoncture européenne</h2>
+      <div class="kv"><span>Phase du cycle</span><b>${pill(PH[e.phase].n, { boom: 'warn', expansion: 'good', ralent: 'warn', recession: 'bad', reprise: 'good' }[e.phase])}</b></div>
+      <div class="kv"><span>Croissance du PIB</span><b class="${cls(e.gdp)}">${pct(e.gdp)}</b></div>
+      <div class="kv"><span>Inflation</span><b>${pct(e.infl)}</b></div>
+      <div class="kv"><span>Taux directeur BCE</span><b>${pct(e.ecb, 2)}</b></div>
+      <div class="kv"><span>Confiance des ménages</span><b>${(e.conf * 100).toFixed(0)}</b></div>
+      <div class="kv"><span>Indice EURO 50</span><b>${e.idx.toFixed(0)}</b></div>${spark(e.idxH.slice(-120), 260, 40)}
+      <div class="row wrap">${shocks || '<span class="muted small">Aucun choc en cours</span>'}</div></section>
+    <section class="card span2"><h2>Fil d'actualité</h2><ul class="feed">${G.log.slice(0, 14).map(l => `<li class="${l.t}"><span>${sdate(l.d)}</span>${esc(l.x)}</li>`).join('')}</ul><button class="ghost" onclick="A.go('journal')">Tout le journal</button></section>
+  </div>`;
+};
+
+/* --- Monde / carte */
+PAGES.monde = () => {
+  const W = 840, H = 540, X = lon => (lon + 11) * 20, Y = lat => (56.5 - lat) * 27;
+  const owned = c => G.biz.filter(b => b.city === c).length + G.props.filter(p => p.city === c).length + G.projs.filter(p => p.city === c).length;
+  let svg = '';
+  for (let lon = -10; lon <= 30; lon += 5) svg += `<line x1="${X(lon)}" x2="${X(lon)}" y1="0" y2="${H}" class="grid"/>`;
+  for (let lat = 38; lat <= 56; lat += 3) svg += `<line y1="${Y(lat)}" y2="${Y(lat)}" x1="0" x2="${W}" class="grid"/>`;
+  for (const c of CITIES) {
+    const o = owned(c.id), n = G.listings.filter(l => l.city === c.id).length, x = X(c.lon) + (c.id === 'nice' ? -10 : c.id === 'monaco' ? 10 : 0), y = Y(c.lat) + (c.id === 'nice' ? 6 : c.id === 'monaco' ? -6 : 0);
+    svg += `<g class="cdot" onclick="A.city('${c.id}')" tabindex="0" role="button" aria-label="${c.n}"><circle cx="${x}" cy="${y}" r="${6 + Math.sqrt(c.pop) * 2.2}" class="${o ? 'own' : ''}"/><text x="${x + 10}" y="${y - 8}">${c.n}${o ? ' · ' + o : ''}</text><text x="${x + 10}" y="${y + 6}" class="sub">${n} opport.</text></g>`;
+  }
+  const rows = CITIES.map(c => {
+    const C = CO(c.c), h = G.rmH[c.id], ch = h.length > 12 ? G.rm[c.id] / h[h.length - 13] - 1 : G.rm[c.id] - 1;
+    return `<tr onclick="A.city('${c.id}')" class="click"><td>${C.f} <b>${c.n}</b></td><td>${C.n}</td><td class="num">${Math.round(c.m2 * G.rm[c.id] * fxOf(c.c)).toLocaleString('fr-FR')} €</td><td class="num ${cls(ch)}">${pct(ch)}</td><td class="num">${pct(C.is)}</td><td class="num">${pct(C.yield)}</td><td>${c.coast ? pill('Port', 'info') : ''}</td><td class="num">${G.listings.filter(l => l.city === c.id).length}</td></tr>`;
+  }).join('');
+  return `<section class="card"><h2>Europe — 22 métropoles</h2><p class="muted small">Cliquez sur une ville pour voir ses opportunités, son marché et sa juridiction. Taille du point = population, en doré = vous y êtes implanté.</p><div class="mapwrap"><svg viewBox="0 0 ${W} ${H}" class="map">${svg}</svg></div></section>
+  <section class="card"><h2>Marchés locaux</h2><div class="scroll"><table class="t"><thead><tr><th>Ville</th><th>Pays</th><th class="num">Prix moyen / m²</th><th class="num">Immo 12 mois</th><th class="num">IS</th><th class="num">Rendement locatif</th><th></th><th class="num">Opport.</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+};
+
+PAGES.ville = () => {
+  const c = CITY[UI.city], C = CO(c.c), L = G.listings.filter(l => l.city === c.id);
+  const card = l => {
+    if (l.kind === 'biz') { const b = l.b, S = SECTORS[b.sector]; return `<div class="opp"><div class="oh"><span class="ico">${S.ico}</span><div><b>${esc(b.name)}</b><span class="muted small">${S.full}${b.sector === 'yacht' ? ` · flotte de ${b.fleet.length}` : ` · taille ${['', 'standard', 'grande', 'flagship'][b.size]}`}</span></div></div>
+      <div class="kv"><span>Prix demandé</span><b>${eur(l.price)}</b></div><div class="kv"><span>EBITDA actuel estimé</span><b class="${cls(l.estE)}">${eur(l.estE * 12)}/an</b></div><div class="kv"><span>Potentiel si bien géré</span><b class="${cls(l.estP)}">${eur((l.estP || 0) * 12)}/an</b></div>
+      <div class="kv"><span>État / réputation</span><b>${b.cond}/100 · ${b.rep}/100</b></div><div class="kv"><span>Direction</span><b>${b.dir ? esc(b.dir.n) + ' (' + b.dir.skill + ')' : '<span class="neg">aucun directeur</span>'}</b></div>
+      <div class="row"><button class="primary" onclick="A.buy('${l.lid}')">Étudier le rachat</button><span class="muted small">expire ${sdate(l.exp)}</span></div></div>`; }
+    if (l.kind === 're') { const p = l.p, R0 = RT[p.type]; return `<div class="opp"><div class="oh"><span class="ico">${R0.ico}</span><div><b>${esc(p.name)}</b><span class="muted small">${p.m2.toLocaleString('fr-FR')} m² · état ${p.cond}/100 · occupation ${pct(p.occ, 0)}</span></div></div>
+      <div class="kv"><span>Prix demandé</span><b>${eur(l.price)}</b></div><div class="kv"><span>Valeur estimée</span><b>${eur(propValue(p))}</b></div><div class="kv"><span>Loyer net estimé</span><b>${eur(propNetMonthly(p) * 12)}/an</b></div><div class="kv"><span>Rendement net / prix</span><b>${pct(propNetMonthly(p) * 12 / l.price)}</b></div>
+      <div class="row"><button class="primary" onclick="A.buy('${l.lid}')">Étudier l'achat</button><span class="muted small">expire ${sdate(l.exp)}</span></div></div>`; }
+    return `<div class="opp"><div class="oh"><span class="ico">🏗️</span><div><b>${esc(l.name)}</b><span class="muted small">${l.m2.toLocaleString('fr-FR')} m² constructibles · zonage : ${l.allowed.map(t => RT[t].n.toLowerCase()).join(', ')}</span></div></div>
+      <div class="kv"><span>Prix du terrain</span><b>${eur(l.price)}</b></div><div class="kv"><span>Charge foncière</span><b>${Math.round(l.price / l.m2).toLocaleString('fr-FR')} €/m²</b></div>
+      <div class="row"><button class="primary" onclick="A.buy('${l.lid}')">Monter le projet</button><span class="muted small">expire ${sdate(l.exp)}</span></div></div>`;
+  };
+  const mine = [...G.biz.filter(b => b.city === c.id).map(b => `<li class="click" onclick="A.bizd('${b.id}')">${SECTORS[b.sector].ico} ${esc(b.name)} — ${eur(bizValue(b))}</li>`), ...G.props.filter(p => p.city === c.id).map(p => `<li>${RT[p.type].ico} ${esc(p.name)} — ${eur(propValue(p))}</li>`), ...G.projs.filter(p => p.city === c.id).map(p => `<li>🏗️ ${esc(p.name)} (chantier)</li>`)].join('');
+  return `<div class="row"><button class="ghost" onclick="A.go('monde')">← Carte</button></div>
+  <div class="grid g3"><section class="card span2"><h2>${C.f} ${c.n} <span class="muted small">${C.n} · ${c.pop.toLocaleString('fr-FR')} M hab.</span></h2>
+    <div class="grid g4 tight">
+      <div class="stat"><span>Prix / m²</span><b>${Math.round(c.m2 * G.rm[c.id] * fxOf(c.c)).toLocaleString('fr-FR')} €</b>${spark(G.rmH[c.id], 110, 26)}</div>
+      <div class="stat"><span>Richesse</span><b>${bar(c.w, 3)}</b></div><div class="stat"><span>Tourisme</span><b>${bar(c.t, 1.7)}</b></div><div class="stat"><span>Vie nocturne</span><b>${bar(c.ni, 1.7)}</b></div>
+    </div>
+    <h3>Opportunités du moment (${L.length})</h3><div class="opps">${L.map(card).join('') || '<p class="muted">Aucune opportunité pour l\'instant. De nouvelles affaires apparaissent chaque semaine.</p>'}</div></section>
+  <section class="card"><h2>Juridiction : ${C.n}</h2>${countrySheet(c.c)}<h3>Vos actifs ici</h3><ul class="list">${mine || '<li class="muted">Aucun</li>'}</ul></section></div>`;
+};
+function countrySheet(k) {
+  const C = CO(k);
+  return `<table class="t compact">
+  <tr><td>Impôt sur les sociétés</td><td class="num">${pct(C.is)}</td></tr><tr><td>Charges patronales</td><td class="num">${pct(C.cs)}</td></tr>
+  <tr><td>TVA</td><td class="num">${pct(C.tva)}</td></tr><tr><td>Dividendes (résident)</td><td class="num">${pct(C.div)}</td></tr>
+  <tr><td>Impôt sur la fortune</td><td class="num">${C.wt ? pct(C.wt.r) + ' > ' + eur(C.wt.th) : 'aucun'}</td></tr>
+  <tr><td>Droits de mutation immo</td><td class="num">${pct(C.mut)}</td></tr><tr><td>Taxe foncière / an</td><td class="num">${pct(C.ptax, 2)}</td></tr>
+  <tr><td>Lenteur administrative</td><td class="num">×${C.bur}</td></tr><tr><td>Prime de risque bancaire</td><td class="num">${pct(C.spr + (G.spreadAdj[k] || 0), 2)}</td></tr>
+  <tr><td>Coût de licenciement</td><td class="num">${C.sev} mois</td></tr><tr><td>Coût construction</td><td class="num">${Math.round(C.build * G.costIdx).toLocaleString('fr-FR')} €/m²</td></tr>
+  <tr><td>Devise</td><td class="num">${C.cur}${C.cur !== 'EUR' ? ' (' + (fxOf(k) - 1 >= 0 ? '+' : '') + pct(fxOf(k) - 1) + ')' : ''}</td></tr></table>
+  <ul class="notes">${C.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`;
+}
+
+/* --- Achat / financement */
+function buyHtml() {
+  const B = UI.buy, L = G.listings.find(x => x.lid === B.lid); if (!L) return '<p>Offre expirée.</p>';
+  const ci = CITY[L.city], C = CO(ci.c);
+  let head = '', costs = [], value = L.price, income = 0, type, extra = 0, est = '';
+  if (L.kind === 'biz') {
+    type = 'biz'; head = `${SECTORS[L.b.sector].ico} ${esc(L.b.name)}`; income = L.estE;
+    costs = [['Prix de cession', L.price], [`Droits d'enregistrement (${pct(C.fmut)})`, L.price * C.fmut], ['Honoraires d\'avocats', 5000]];
+  } else if (L.kind === 're') {
+    type = 're'; head = `${RT[L.p.type].ico} ${esc(L.p.name)}`; income = propNetMonthly(L.p); value = Math.min(L.price, propValue(L.p));
+    costs = [['Prix', L.price], [`Droits de mutation (${pct(C.mut)})`, L.price * C.mut]];
+  } else {
+    type = 'promo'; head = `🏗️ ${esc(L.name)} — ${ci.n}`;
+    const { sale, build } = landRef(ci, B.ptype, L.m2); extra = build;
+    costs = [['Terrain', L.price], [`Droits de mutation (${pct(C.mut)})`, L.price * C.mut], [`Travaux (${Math.round(build / L.m2).toLocaleString('fr-FR')} €/m², à décaisser)`, build]];
+    const tot = costs.reduce((a, c) => a + c[1], 0); value = tot;
+    const intEst = B.pct * tot * (G.eco.ecb + .04) * (B.months / 12) * .6;
+    est = `<div class="estbox"><div class="kv"><span>Valeur de vente estimée à livraison (prix actuels)</span><b>${eur(sale)}</b></div><div class="kv"><span>Prix de revient (hors frais financiers)</span><b>${eur(tot)}</b></div><div class="kv"><span>Frais financiers estimés</span><b>${eur(intEst)}</b></div><div class="kv"><span>Marge promoteur estimée</span><b class="${cls(sale - tot - intEst)}">${eur(sale - tot - intEst)} (${pct((sale - tot - intEst) / tot)})</b></div><p class="muted small">Délai de permis ~${Math.round(120 * C.bur)} j (bureaucratie ×${C.bur}), risque de refus ~${pct(.1 * C.bur, 0)}, puis ~${Math.round(240 + L.m2 / 25)} j de travaux. Dépassements et retards possibles.</p></div>`;
+  }
+  const total = costs.reduce((a, c) => a + c[1], 0);
+  const amount = Math.round(B.pct * (L.kind === 'land' ? total : L.price) / 1000) * 1000;
+  const q = amount > 0 ? loanQuote({ type, amount, months: B.months, fixed: B.fixed, value, income, country: ci.c, extraCost: extra }) : null;
+  const cashNow = L.kind === 'land' ? Math.max(0, L.price * (1 + C.mut) - amount) + (q ? q.fees : 0) : total - amount + (q ? q.fees : 0);
+  const T = LOANT[type];
+  const maxPct = L.kind === 'land' ? .7 : T.ltv;
+  return `<h2>${head}</h2>
+  <div class="grid g2"><div>
+    <h3>Coût de l'opération</h3><table class="t">${costs.map(c => `<tr><td>${c[0]}</td><td class="num">${eur(c[1])}</td></tr>`).join('')}<tr class="tot"><td>Total</td><td class="num">${eur(total)}</td></tr></table>
+    ${L.kind === 'land' ? `<label for="b_type">Programme à construire</label><select id="b_type" onchange="A.buyUpd(true)">${L.allowed.map(t => `<option value="${t}"${t === B.ptype ? ' selected' : ''}>${RT[t].n}</option>`).join('')}</select>${est}` : ''}
+    ${L.kind === 'biz' ? `<p class="muted small">Le prix tient compte de l'état actuel (EBITDA ${eur(L.estE * 12)}/an) et du potentiel bien géré (${eur((L.estP || 0) * 12)}/an). Pensez à recruter un directeur et à compléter les équipes après le rachat.</p>` : ''}
+  </div><div>
+    <h3>Financement bancaire — ${T.n}</h3>
+    <label for="b_pct">Part financée par la banque : <b>${pct(B.pct, 0)}</b> (${eur(amount)})</label><input type="range" id="b_pct" min="0" max="${maxPct}" step=".05" value="${B.pct}" oninput="A.buyUpd()">
+    <div class="row"><div><label for="b_m">Durée</label><select id="b_m" onchange="A.buyUpd()">${(type === 'promo' ? [24, 36, 48] : type === 're' ? [120, 180, 240, 300] : [36, 60, 84, 120]).map(m => `<option value="${m}"${m === B.months ? ' selected' : ''}>${m / 12} ans</option>`).join('')}</select></div>
+    <div><label for="b_fx">Taux</label><select id="b_fx" onchange="A.buyUpd()"><option value="1"${B.fixed ? ' selected' : ''}>Fixe</option><option value="0"${!B.fixed ? ' selected' : ''}>Variable (Euribor + marge)</option></select></div></div>
+    ${q ? quoteBox(q, amount) : '<p class="muted">Achat 100 % en fonds propres.</p>'}
+    <div class="kv big"><span>Trésorerie à mobiliser maintenant</span><b class="${G.hold >= cashNow ? '' : 'neg'}">${eur(cashNow)}</b></div>
+    <div class="kv"><span>Trésorerie disponible (holding)</span><b>${eur(G.hold)}</b></div>
+  </div></div>
+  <div class="row end"><button class="ghost" onclick="closeModal()">Annuler</button><button class="primary" onclick="A.buyGo()" ${(q && !q.ok) || G.hold < cashNow ? 'disabled' : ''}>Signer l'acquisition</button></div>`;
+}
+function quoteBox(q, amount) {
+  const P = q.parts;
+  return `<div class="quote ${q.ok ? 'ok' : 'ko'}"><div class="qh">${q.ok ? 'Accord de principe' : 'Refus de la banque'} — taux ${pct(q.rate, 2)} ${q.fixed ? 'fixe' : 'variable'}</div>
+  <table class="t compact"><tr><td>Taux de base (${q.fixed ? 'swap + prime de durée' : 'Euribor'})</td><td class="num">${pct(P.base, 2)}</td></tr><tr><td>Marge bancaire</td><td class="num">${pct(P.marge, 2)}</td></tr><tr><td>Prime de risque pays</td><td class="num">${pct(P.pays, 2)}</td></tr><tr><td>Prime emprunteur (score ${G.score})</td><td class="num">${pct(P.risque, 2)}</td></tr><tr><td>Prime de LTV</td><td class="num">${pct(P.ltv, 2)}</td></tr>${P.daf ? `<tr><td>Négociation du DAF</td><td class="num">${pct(P.daf, 2)}</td></tr>` : ''}${P.prive ? `<tr><td>Banque privée (> 20 M€)</td><td class="num">${pct(P.prive, 2)}</td></tr>` : ''}<tr><td>Assurance emprunteur</td><td class="num">${pct(P.assurance, 2)}</td></tr></table>
+  <div class="kv"><span>Échéance mensuelle</span><b>${eur(q.pay)}</b></div><div class="kv"><span>Frais de dossier</span><b>${eur(q.fees)}</b></div>${q.dscr != null ? `<div class="kv"><span>Couverture de la dette (DSCR)</span><b class="${q.dscr >= 1.2 ? 'pos' : 'neg'}">${q.dscr.toFixed(2).replace('.', ',')}</b></div>` : ''}
+  ${q.reasons.length ? `<ul class="reasons">${q.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</div>`;
+}
+
+/* --- Entreprises */
+PAGES.biz = () => {
+  if (!G.biz.length) return `<section class="card empty"><h2>Aucune entreprise</h2><p>Parcourez la carte d'Europe pour racheter votre premier établissement : franchise de restauration rapide, club, flotte de yachts, concession automobile ou hôtel.</p><button class="primary" onclick="A.go('monde')">Ouvrir la carte</button></section>`;
+  return `<section class="card"><h2>Vos entreprises (${G.biz.length})</h2><div class="bizgrid">${G.biz.map(b => {
+    const t = trailing(b, 30), S = SECTORS[b.sector], ci = CITY[b.city];
+    return `<div class="bcard click" onclick="A.bizd('${b.id}')">${art(b.sector, b.id, b.name.split(' ' + ci.n)[0], { n: b.fleet.length })}
+      <div class="bb"><b>${esc(b.name)}</b><span class="muted small">${CO(ci.c).f} ${ci.n} · ${S.n}</span>
+      <div class="kv"><span>EBITDA 30 j</span><b class="${cls(t ? t.eb : 0)}">${t ? eur(t.eb) : '—'}</b></div><div class="kv"><span>Valorisation</span><b>${eur(bizValue(b))}</b></div>
+      <div class="row wrap">${b.closedUntil > G.day ? pill('Fermé', 'bad') : pill('Ouvert', 'good')} ${b.dir ? '' : pill('Sans directeur', 'warn')} ${staffFactor(b) < .9 ? pill('Sous-effectif', 'warn') : ''} ${b.cond < 45 ? pill('Vétuste', 'warn') : ''}</div></div></div>`;
+  }).join('')}</div></section>`;
+};
+PAGES.bizd = () => {
+  const b = G.biz.find(x => x.id === UI.biz); if (!b) { UI.page = 'biz'; return PAGES.biz(); }
+  const S = SECTORS[b.sector], ci = CITY[b.city], C = CO(ci.c), req = staffReq(b), t30 = trailing(b, 30), est = estMonthly(b);
+  const roles = Object.keys(req);
+  const hist = b.h.slice(-90).map(x => x[1]);
+  const pl = dayEcon(b, G.day, false), k = 30.4;
+  const loans = G.loans.filter(l => l.col && l.col.k === 'biz' && l.col.id === b.id);
+  const q = quality(b);
+  return `<div class="row"><button class="ghost" onclick="A.go('biz')">← Entreprises</button></div>
+  <div class="grid g3"><section class="card span2"><div class="hero">${art(b.sector, b.id, b.name.split(' ' + ci.n)[0], { n: b.fleet.length })}</div>
+    <h2>${esc(b.name)} <span class="muted small">${S.full} · ${C.f} ${ci.n}${b.sector !== 'yacht' ? ' · taille ' + ['', 'standard', 'grande', 'flagship'][b.size] : ''}</span></h2>
+    <div class="grid g4 tight">
+      <div class="stat"><span>Qualité opérationnelle</span><b>${(q * 100).toFixed(0)}</b>${bar(q, 1.5)}</div>
+      <div class="stat"><span>Réputation</span><b>${b.rep.toFixed(0)}/100</b>${bar(b.rep)}</div>
+      <div class="stat"><span>État des locaux</span><b>${b.cond.toFixed(0)}/100</b>${bar(b.cond, 100, b.cond < 45 ? 'var(--bad)' : '')}</div>
+      <div class="stat"><span>Effectifs</span><b>${(staffFactor(b) * 100).toFixed(0)} %</b>${bar(staffFactor(b), 1.1)}</div>
+    </div>
+    ${b.closedUntil > G.day ? `<p class="warnline">Établissement fermé jusqu'au ${sdate(b.closedUntil)}.</p>` : ''}
+    <h3>EBITDA quotidien — 90 derniers jours</h3>${spark(hist, 600, 60)}
+    <div class="grid g2"><div><h3>Compte d'exploitation (projection mensuelle)</h3><table class="t">
+      <tr><td>Chiffre d'affaires HT</td><td class="num">${eur(est.net)}</td></tr>
+      <tr><td>Achats consommés</td><td class="num neg">${eur(-pl.cogs * k)}</td></tr>${S.royalty ? `<tr><td>Redevance de franchise (${pct(S.royalty, 0)})</td><td class="num neg">${eur(-pl.roy * k)}</td></tr>` : ''}
+      <tr><td>Masse salariale chargée</td><td class="num neg">${eur(-pl.staff * k)}</td></tr><tr><td>${b.sector === 'yacht' ? 'Places de port' : 'Loyer'}</td><td class="num neg">${eur(-pl.rent * k)}</td></tr>
+      <tr><td>Frais généraux</td><td class="num neg">${eur(-pl.fg * k)}</td></tr>${pl.maint ? `<tr><td>Entretien de la flotte</td><td class="num neg">${eur(-pl.maint * k)}</td></tr>` : ''}<tr><td>Assurance</td><td class="num neg">${eur(-pl.ins * k)}</td></tr>
+      <tr class="tot"><td>EBITDA projeté</td><td class="num ${cls(est.eb)}">${eur(est.eb)}</td></tr><tr><td>EBITDA réel 30 j</td><td class="num ${cls(t30 ? t30.eb : 0)}">${t30 ? eur(t30.eb) : '—'}</td></tr></table>
+      <p class="muted small">La projection lisse saisonnalité et jours de la semaine sur un an, aux conditions actuelles. Le CA est soumis à la TVA ${C.n} (${pct(C.tva)}) et le résultat à l'IS (${pct(C.is)}).</p></div>
+    <div><h3>Pilotage</h3>
+      <label>Politique tarifaire</label><div class="seg">${[[.85, 'Agressive'], [1, 'Marché'], [1.2, 'Premium']].map(([v, n]) => `<button class="${b.price === v ? 'on' : ''}" onclick="A.price('${b.id}',${v})">${n}</button>`).join('')}</div>
+      <div class="actions">
+        <button onclick="A.mk('${b.id}')">Campagne marketing — ${eur(mkCost(b))}</button>
+        <button onclick="A.renov('${b.id}')">Rénovation complète — ${eur(renovCost(b))}</button>
+        ${b.sector !== 'yacht' && b.size < 3 ? `<button onclick="A.expand('${b.id}')">Agrandir (taille ${b.size + 1}) — ${eur(expandCost(b))}</button>` : ''}
+        <button onclick="A.ins('${b.id}')">${b.insured ? 'Résilier l\'assurance multirisque' : 'Souscrire l\'assurance multirisque'}</button>
+        <button class="danger" onclick="A.sellBiz('${b.id}')">Mettre en vente</button>
+      </div>
+      <div class="kv"><span>Assurance</span><b>${b.insured ? pill('Assuré', 'good') : pill('Non assuré', 'bad')}</b></div>
+      <div class="kv"><span>Prix d'acquisition</span><b>${eur(b.cost)}</b></div><div class="kv"><span>Valorisation actuelle</span><b>${eur(bizValue(b))}</b></div>
+      <div class="kv"><span>Prêts adossés</span><b>${loans.length ? eur(loans.reduce((a, l) => a + l.rem, 0)) : 'aucun'}</b></div>
+    </div></div></section>
+  <section class="card"><h2>Personnel</h2>
+    <div class="dirbox"><span class="muted small">Directeur d'établissement</span>${b.dir ? `<b>${esc(b.dir.n)}</b><span>Compétence ${b.dir.skill}/100 · ${esc(b.dir.trait)} · ${eur(b.dir.sal)}/mois brut</span><div class="row"><button onclick="A.dirCands('${b.id}')">Remplacer</button><button class="danger" onclick="A.fireDir('${b.id}')">Licencier</button></div>` : `<b class="neg">Poste vacant</b><span class="muted small">Sans directeur, la qualité chute de 30 %.</span><button class="primary" onclick="A.dirCands('${b.id}')">Recruter un directeur</button>`}</div>
+    <table class="t staff"><thead><tr><th>Poste</th><th class="num">Requis</th><th class="num">Effectif</th><th></th></tr></thead><tbody>
+    ${roles.map(r => { const ri0 = roleInfo(b, r), n = b.staff[r] || 0, need = req[r]; return `<tr><td>${ri0[0]}<span class="muted small"> · ${eur(ri0[2] * C.wage * (b.raise || 1))}/mois</span></td><td class="num">${need}</td><td class="num ${n < need ? 'neg' : ''}">${n}</td><td class="nowrap"><button class="mini" onclick="A.staff('${b.id}','${r}',-1)" aria-label="Licencier">−</button><button class="mini" onclick="A.staff('${b.id}','${r}',1)" aria-label="Embaucher">+</button></td></tr>`; }).join('')}
+    </tbody></table>
+    <button onclick="A.staffFit('${b.id}')">Ajuster tous les effectifs au besoin</button>
+    <p class="muted small">Embauche : ½ mois de salaire de frais de recrutement. Licenciement en ${C.n} : ${C.sev} mois de salaire. Charges patronales ${pct(C.cs)}. L'entretien conditionne l'état des locaux et les contrôles sanitaires${b.sector === 'nightclub' ? ' ; la sécurité conditionne les fermetures administratives' : ''}.</p>
+    ${b.sector === 'yacht' ? `<h3>Flotte</h3><table class="t">${b.fleet.map(y => `<tr><td>${YACHTS[y.m].n}${(y.down || 0) > G.day ? ' ' + pill('Immobilisé', 'warn') : ''}</td><td class="num">${eur(y.v)}</td><td><button class="mini" onclick="A.sellYacht('${b.id}','${y.id}')">Vendre</button></td></tr>`).join('')}</table>
+      <label for="y_m">Acheter un yacht (payé par la holding)</label><div class="row"><select id="y_m">${YACHTS.map((y, i) => `<option value="${i}">${y.n} — ${eur(y.v)} — ${eur(y.rate)}/jour</option>`).join('')}</select><button onclick="A.addYacht('${b.id}')">Acheter</button></div>` : ''}
+  </section></div>`;
+};
+const mkCost = b => Math.round(Math.max(15000, estMonthly(b).net * .06) / 1000) * 1000;
+const renovCost = b => Math.round((80000 * (b.sector === 'yacht' ? 1 : b.size) * cityPrice(CITY[b.city]) * (b.sector === 'hotel' ? 6 : b.sector === 'cardealer' ? 2 : 1) + fleetValue(b) * .05) / 1000) * 1000;
+const expandCost = b => Math.round(Math.max(b.cost, b.val) * .55 / 1000) * 1000;
+
+/* --- Immobilier */
+PAGES.immo = () => {
+  const projs = G.projs.map(p => {
+    const prog = p.phase === 'travaux' ? clamp((G.day - p.t0) / p.dur, 0, 1) : 0;
+    return `<div class="bcard">${art(p.type, p.id, p.name.split(',')[0], { prog: Math.max(.05, prog) })}<div class="bb"><b>${esc(p.name)}</b>
+    <span class="muted small">${p.m2.toLocaleString('fr-FR')} m² · ${{ permis: 'Instruction du permis', bloque: 'Permis refusé', travaux: 'Travaux en cours' }[p.phase]}</span>
+    ${p.phase === 'travaux' ? `${bar(prog, 1)}<div class="kv"><span>Avancement</span><b>${pct(prog, 0)} · livraison ${sdate(p.end)}</b></div>` : `<div class="kv"><span>Décision attendue</span><b>${sdate(p.end)}</b></div>`}
+    <div class="kv"><span>Budget travaux</span><b>${eur(p.budget * (1 + p.over))}${p.over > 0 ? ' ' + pill('+' + pct(p.over, 0), 'bad') : ''}</b></div><div class="kv"><span>Décaissé</span><b>${eur(p.spent)}</b></div>
+    <div class="kv"><span>Compte séquestre (crédit)</span><b>${eur(p.escrow || 0)}</b></div><div class="kv"><span>Valeur à livraison (prix actuels)</span><b>${eur(landRef(CITY[p.city], p.type, p.m2).sale)}</b></div></div></div>`;
+  }).join('');
+  const props = G.props.map(p => {
+    const v = propValue(p), debt = loansOn({ k: 'prop', id: p.id });
+    return `<tr><td>${RT[p.type].ico} <b>${esc(p.name)}</b><span class="muted small"> · ${p.m2.toLocaleString('fr-FR')} m²</span>${p.squat ? ' ' + pill('Squatté', 'bad') : ''}${p.sale ? ' ' + pill(`Vente : ${p.sale.done}/${p.sale.lots} lots`, 'info') : ''}</td>
+    <td class="num">${eur(v)}</td><td class="num ${cls(v - p.cost)}">${signed(v - p.cost)}</td><td class="num">${pct(p.occ, 0)}</td><td class="num">${eur(propNetMonthly(p))}</td><td class="num">${debt ? eur(debt) : '—'}</td>
+    <td class="nowrap">${p.sale ? '' : `<button class="mini" onclick="A.sellProp('${p.id}','bloc')">Vendre en bloc</button><button class="mini" onclick="A.sellProp('${p.id}','retail')">Au détail</button>`}<button class="mini" onclick="A.renovProp('${p.id}')">Rénover</button></td></tr>`;
+  }).join('');
+  return `<section class="card"><h2>Promotion immobilière</h2>${projs ? `<div class="bizgrid">${projs}</div>` : '<p class="muted">Aucun chantier. Achetez un terrain constructible depuis une ville pour monter un programme : résidence étudiante, logements, bureaux, commerces, ou résidence de luxe sur la Côte d\'Azur.</p>'}</section>
+  <section class="card"><h2>Patrimoine locatif</h2>${props ? `<div class="scroll"><table class="t"><thead><tr><th>Bien</th><th class="num">Valeur</th><th class="num">Plus-value latente</th><th class="num">Occupation</th><th class="num">Loyer net / mois</th><th class="num">Dette</th><th></th></tr></thead><tbody>${props}</tbody></table></div>` : '<p class="muted">Aucun bien.</p>'}
+  <p class="muted small">Loyer net = loyer × occupation − frais de gestion − taxe foncière. Vente en bloc : 88 % de la valeur, immédiat. Vente au détail : prix plein, écoulement selon la conjoncture et les taux.</p></section>`;
+};
+
+/* --- Banque */
+PAGES.banque = () => {
+  const e = G.eco, L = UI.loan;
+  const cols = colOptions(L.type);
+  if (cols.length && !cols.some(c => c.v === L.col)) L.col = cols[0].v;
+  const loans = G.loans.map(l => `<tr><td>${esc(l.label)}<span class="muted small"> · ${LOANT[l.type].n}</span>${l.missed ? ' ' + pill(l.missed + ' impayé(s)', 'bad') : ''}</td><td class="num">${eur(l.principal)}</td><td class="num">${eur(l.rem)}</td><td class="num">${pct(l.rate, 2)} ${l.fixed ? 'fixe' : 'var.'}</td><td class="num">${eur(loanPaymentMonthly(l))}</td><td class="num">${l.left}</td><td><button class="mini" onclick="A.repay('${l.id}')">Rembourser</button></td></tr>`).join('');
+  return `<div class="grid g3">
+  <section class="card"><h2>Conditions de marché</h2>
+    <div class="kv"><span>Taux directeur BCE</span><b>${pct(e.ecb, 2)}</b></div><div class="kv"><span>Euribor 3 mois</span><b>${pct(euribor(), 2)}</b></div>
+    <div class="kv"><span>Taux fixe 20 ans (meilleur profil)</span><b>${pct(e.ecb + .003 + 20 * .0005 + .013, 2)}</b></div>
+    <h3>Votre profil emprunteur</h3><div class="score"><b>${G.score}</b><span>/ 900</span>${bar(G.score - 300, 600, G.score >= 700 ? 'var(--good)' : G.score < 550 ? 'var(--bad)' : 'var(--warn)')}</div>
+    <div class="kv"><span>Revenus opérationnels</span><b>${eur(monthlyIncome())}/mois</b></div><div class="kv"><span>Échéances</span><b>${eur(G.loans.reduce((a, l) => a + loanPaymentMonthly(l), 0))}/mois</b></div>
+    <div class="kv"><span>Découvert autorisé</span><b>${eur(overdraftLimit())}</b></div><div class="kv"><span>Agios sur découvert</span><b>${pct(euribor() + .09, 2)}</b></div>
+    <p class="muted small">Le score monte quand vous payez à l'heure, chute de 60 points par impayé et de 150 en cas de défaut. Trois impayés consécutifs : saisie de la garantie, puis appel de votre caution personnelle.</p></section>
+  <section class="card span2"><h2>Demande de financement</h2>
+    <div class="grid g2"><div>
+      <label for="l_type">Type de crédit</label><select id="l_type" onchange="A.loanUpd()">${['treso', 're', 'biz', 'lomb'].map(k => `<option value="${k}"${L.type === k ? ' selected' : ''}>${LOANT[k].n}</option>`).join('')}</select>
+      ${L.type !== 'treso' ? `<label for="l_col">Garantie</label><select id="l_col" onchange="A.loanUpd()">${cols.map(c => `<option value="${c.v}"${c.v === L.col ? ' selected' : ''}>${esc(c.n)}</option>`).join('') || '<option value="">Aucun actif éligible</option>'}</select>` : ''}
+      <label for="l_amt">Montant (€)</label><input id="l_amt" type="number" step="10000" min="0" value="${L.amount}" oninput="A.loanUpd()">
+      <div class="row"><div><label for="l_m">Durée (mois)</label><input id="l_m" type="number" min="6" max="${LOANT[L.type].max}" step="6" value="${L.months}" oninput="A.loanUpd()"></div>
+      <div><label for="l_fx">Taux</label><select id="l_fx" onchange="A.loanUpd()" ${LOANT[L.type].varOnly ? 'disabled' : ''}><option value="1"${L.fixed ? ' selected' : ''}>Fixe</option><option value="0"${!L.fixed ? ' selected' : ''}>Variable</option></select></div></div>
+    </div><div id="l_quote">${loanFormQuote()}</div></div></section></div>
+  <section class="card"><h2>Vos crédits</h2>${loans ? `<div class="scroll"><table class="t"><thead><tr><th>Crédit</th><th class="num">Emprunté</th><th class="num">Restant dû</th><th class="num">Taux</th><th class="num">Mensualité</th><th class="num">Échéances</th><th></th></tr></thead><tbody>${loans}</tbody></table></div><p class="muted small">Remboursement anticipé : indemnité de 3 % (taux fixe) ou 1 % (taux variable).</p>` : '<p class="muted">Aucun crédit en cours.</p>'}</section>
+  <section class="card"><h2>Flux entre la holding et vous</h2><div class="grid g2">
+    <div><h3>Verser un dividende</h3><p class="muted small">Imposé selon votre pays d'imposition personnel : ${CO(ptc()).f} ${CO(ptc()).n}, ${pct(divTaxRate())}.</p><div class="row"><input id="d_amt" type="number" step="10000" value="100000" aria-label="Montant du dividende"><button class="primary" onclick="A.div()">Verser</button></div></div>
+    <div><h3>Apport en compte courant</h3><p class="muted small">Remonter de l'argent personnel dans la holding, sans fiscalité.</p><div class="row"><input id="c_amt" type="number" step="10000" value="100000" aria-label="Montant de l'apport"><button onclick="A.contrib()">Apporter</button></div></div>
+  </div></section>`;
+};
+function colOptions(type) {
+  if (type === 're') return G.props.filter(p => !p.sale).map(p => ({ v: 'prop:' + p.id, n: `${p.name} — ${eur(propValue(p))} (déjà gagé : ${eur(loansOn({ k: 'prop', id: p.id }))})` }));
+  if (type === 'biz') return G.biz.map(b => ({ v: 'biz:' + b.id, n: `${b.name} — ${eur(bizValue(b))} (déjà gagé : ${eur(loansOn({ k: 'biz', id: b.id }))})` }));
+  if (type === 'lomb') return portValue() > 0 ? [{ v: 'port:p', n: `Portefeuille titres — ${eur(portValue())} (déjà gagé : ${eur(loansOn({ k: 'port', id: 'p' }))})` }] : [];
+  return [];
+}
+function loanFormObj() {
+  const L = UI.loan; const o = { type: L.type, amount: +L.amount || 0, months: +L.months || 12, fixed: L.fixed, country: G.holdC };
+  if (L.type !== 'treso') {
+    if (!L.col) return null;
+    const [k, id] = L.col.split(':'); o.col = { k, id };
+    o.value = collateralValue(o.col); o.existing = loansOn(o.col);
+    if (k === 'prop') o.country = CITY[G.props.find(p => p.id === id).city].c;
+    if (k === 'biz') o.country = CITY[G.biz.find(p => p.id === id).city].c;
+  }
+  return o;
+}
+function loanFormQuote() {
+  const o = loanFormObj(); if (!o) return '<p class="muted">Aucun actif ne peut servir de garantie pour ce type de crédit.</p>';
+  const q = loanQuote(o);
+  return quoteBox(q, o.amount) + `<div class="row end"><button class="primary" onclick="A.loanGo()" ${q.ok ? '' : 'disabled'}>Signer l'offre de prêt</button></div>`;
+}
+
+/* --- Bourse */
+PAGES.bourse = () => {
+  const pv = portValue(), cost = Object.values(G.port).reduce((a, h) => a + h.cost, 0);
+  return `<div class="grid g3"><section class="card span2"><h2>Indice EURO 50 — ${G.eco.idx.toFixed(0)}</h2>${bigChart(G.eco.idxH.map((v, i) => [G.day - G.eco.idxH.length + 1 + i, v]), v => v.toFixed(0))}</section>
+  <section class="card"><h2>Portefeuille de la holding</h2><div class="kv"><span>Valeur</span><b>${eur(pv)}</b></div><div class="kv"><span>Plus-value latente</span><b class="${cls(pv - cost)}">${signed(pv - cost)}</b></div>
+  <p class="muted small">Courtage 0,15 % (min. 10 €). Plus-values réalisées soumises à l'IS du pays de la holding (${CO(G.holdC).n}, ${pct(CO(G.holdC).is)}). Le portefeuille peut garantir un crédit lombard : attention aux appels de marge en cas de krach.</p></section></div>
+  <section class="card"><h2>Cotations</h2><div class="scroll"><table class="t"><thead><tr><th>Valeur</th><th>Secteur</th><th class="num">Cours</th><th class="num">Jour</th><th class="num">1 mois</th><th>60 j</th><th class="num">Détenu</th><th>Ordre</th></tr></thead><tbody>
+  ${G.stocks.map(s => { const h = s.h, d1 = h.length > 1 ? s.p / h[h.length - 2] - 1 : 0, m1 = h.length > 30 ? s.p / h[h.length - 31] - 1 : 0, own = G.port[s.t]; return `<tr><td><b>${s.t}</b> <span class="muted small">${s.n}</span></td><td>${s.sec}</td><td class="num">${s.p.toFixed(2).replace('.', ',')} €</td><td class="num ${cls(d1)}">${pct(d1, 2)}</td><td class="num ${cls(m1)}">${pct(m1)}</td><td>${spark(h.slice(-60), 90, 24)}</td><td class="num">${own ? own.q.toLocaleString('fr-FR') + ' · ' + eur(own.q * s.p) : '—'}</td><td class="nowrap"><input id="q_${s.t}" type="number" min="1" value="${Math.max(1, Math.round(100000 / s.p))}" class="qty" aria-label="Quantité ${s.t}"><button class="mini" onclick="A.trade('${s.t}',1)">Acheter</button><button class="mini" onclick="A.trade('${s.t}',-1)" ${own ? '' : 'disabled'}>Vendre</button></td></tr>`; }).join('')}
+  </tbody></table></div></section>`;
+};
+
+/* --- Direction */
+PAGES.direction = () => `<section class="card"><h2>Comité de direction de la holding</h2><p class="muted small">Ces cadres travaillent pour l'ensemble du groupe. Salaires annuels bruts, chargés selon le pays de la holding (${CO(G.holdC).n}). Les candidats se renouvellent tous les deux mois.</p>
+  <div class="execgrid">${Object.entries(EXECS).map(([k, E]) => { const x = G.execs[k]; return `<div class="exec"><h3>${E.n}</h3><p class="muted small">${E.d}</p>
+  ${x ? `<div class="dirbox"><b>${esc(x.n)}</b><span>Compétence ${x.skill}/100 · ${esc(x.trait)} · ${eur(x.sal)}/an</span><button class="danger mini" onclick="A.fireExec('${k}')">Licencier (indemnité ${eur(x.sal * .5)})</button></div>` : '<p class="neg small">Poste vacant</p>'}
+  <table class="t compact">${(G.cands[k] || []).map((c, i) => `<tr><td>${esc(c.n)}<span class="muted small"> · ${esc(c.trait)}</span></td><td class="num">${c.skill}</td><td class="num">${eur(c.sal)}/an</td><td><button class="mini" onclick="A.hireExec('${k}',${i})">Recruter</button></td></tr>`).join('')}</table></div>`; }).join('')}</div></section>`;
+
+/* --- Luxe & résidence */
+PAGES.luxe = () => {
+  const cats = [...new Set(LUX.map(l => l.cat))];
+  const ci = CITY[G.resCity];
+  return `<div class="grid g3"><section class="card span2"><h2>Catalogue</h2><div class="seg">${cats.map(c => `<button class="${UI.luxCat === c ? 'on' : ''}" onclick="A.luxCat('${c}')">${c}</button>`).join('')}</div>
+  <table class="t"><thead><tr><th>Article</th><th class="num">Prix</th><th class="num">Évolution / an</th><th class="num">Entretien / mois</th><th class="num">Prestige</th><th></th></tr></thead><tbody>
+  ${LUX.map((l, i) => l.cat !== UI.luxCat ? '' : `<tr><td>${esc(l.n)}${l.city ? `<span class="muted small"> · résidence à ${CITY[l.city].n}</span>` : ''}</td><td class="num">${eur(l.p)}</td><td class="num ${cls(l.g)}">${pct(l.g)}</td><td class="num">${l.up ? eur(l.up) : '—'}</td><td class="num">${l.pr}</td><td><button class="mini" onclick="A.buyLux(${i})" ${G.perso < l.p ? 'disabled' : ''}>Acheter</button></td></tr>`).join('')}</tbody></table>
+  <p class="muted small">Payé depuis votre compte personnel. Revente à 90 % de la valeur de marché. Les résidences suppriment le loyer de votre logement dans la ville concernée.</p></section>
+  <section class="card"><h2>Votre collection</h2><div class="kv"><span>Prestige</span><b>${prestige()}</b></div><div class="kv"><span>Valeur</span><b>${eur(luxValue())}</b></div>
+  <ul class="list">${G.lux.map(x => `<li>${esc(LUX[x.i].n)} — ${eur(x.v)} <button class="mini" onclick="A.sellLux('${x.id}')">Revendre</button></li>`).join('') || '<li class="muted">Rien pour l\'instant.</li>'}</ul></section></div>
+  <section class="card"><h2>Résidence fiscale</h2><div class="grid g2"><div>
+    <div class="kv"><span>Résidence actuelle</span><b>${CO(ci.c).f} ${ci.n}</b></div><div class="kv"><span>Nationalité</span><b>${CO(G.nat).f} ${CO(G.nat).n}</b></div>
+    <div class="kv"><span>Pays d'imposition personnelle</span><b>${CO(ptc()).f} ${CO(ptc()).n}</b></div>${ptc() !== ci.c ? '<p class="warnline">Convention fiscale franco-monégasque de 1963 : en tant que Français, vous restez imposable en France malgré votre résidence à Monaco.</p>' : ''}
+    <div class="kv"><span>Dividendes</span><b>${pct(divTaxRate())}</b></div><div class="kv"><span>Train de vie mensuel</span><b>${eur(G.lastLife || 0)}</b></div>
+    ${ptc() === 'IT' ? `<div class="kv"><span>Régime forfaitaire italien (200 k€/an)</span><b><button class="mini" onclick="A.flatIT()">${G.flatIT ? 'Quitter le régime' : 'Opter'}</button></b></div>` : ''}
+  </div><div><label for="r_city">Déménager vers</label><select id="r_city" onchange="A.resPrev()">${CITIES.map(c => `<option value="${c.id}"${c.id === (UI.resTo || G.resCity) ? ' selected' : ''}>${CO(c.c).f} ${c.n}</option>`).join('')}</select><div id="r_prev">${resPreview(UI.resTo || G.resCity)}</div></div></div></section>`;
+};
+function resPreview(to) {
+  if (to === G.resCity) return '<p class="muted small">Choisissez une autre ville pour simuler un changement de résidence.</p>';
+  const r = residencyCalc(to);
+  return `<table class="t compact"><tr><td>Frais de déménagement et conseils</td><td class="num">${eur(50000)}</td></tr><tr><td>Exit tax française</td><td class="num">${r.exit ? eur(r.exit) : r.exitNote || '—'}</td></tr>${r.mc ? `<tr><td>Dépôt bloqué en banque monégasque</td><td class="num">${eur(500000)}</td></tr>` : ''}<tr><td>Nouveau taux sur dividendes</td><td class="num">${pct(CO(r.toPtc).div)}</td></tr><tr><td>Impôt sur la fortune</td><td class="num">${CO(r.toPtc).wt ? pct(CO(r.toPtc).wt.r) : 'aucun'}</td></tr><tr><td>Loyer de résidence estimé</td><td class="num">${eur(r.rent)}/mois</td></tr></table>
+  ${r.toPtc !== CITY[to].c ? '<p class="warnline">Vous resterez imposé en France (convention de 1963).</p>' : ''}${r.err ? `<p class="neg small">${esc(r.err)}</p>` : ''}<button class="primary" onclick="A.move('${to}')" ${r.err ? 'disabled' : ''}>Transférer ma résidence</button>`;
+}
+function residencyCalc(to) {
+  const ci = CITY[to], toPtc = (ci.c === 'MC' && G.nat === 'FR') ? 'FR' : ci.c, from = ptc();
+  let exit = 0, exitNote = '';
+  const holdEq = netWorth() - G.perso - G.monacoDep - luxValue();
+  if (from === 'FR' && toPtc !== 'FR' && holdEq > 8e5) { const gain = Math.max(0, holdEq - G.contrib); if (EU.has(toPtc)) exitNote = 'sursis automatique (UE)'; else exit = gain * .3; }
+  const mc = ci.c === 'MC' && CITY[G.resCity].c !== 'MC';
+  const need = 50000 + exit + (mc ? 500000 : 0);
+  const rent = G.lux.some(x => LUX[x.i].city === to) ? 0 : ci.m2 * .45;
+  return { toPtc, exit, exitNote, mc, need, rent, err: G.perso < need ? `Il vous faut ${eur(need)} sur votre compte personnel.` : '' };
+}
+
+/* --- Juridictions */
+PAGES.fisc = () => {
+  const ks = Object.keys(COUNTRIES);
+  const row = (n, f) => `<tr><td>${n}</td>${ks.map(k => `<td class="num">${f(CO(k), k)}</td>`).join('')}</tr>`;
+  return `<section class="card"><h2>Comparatif des juridictions</h2><p class="muted small">Chaque pays offre ses avantages. Les réformes fiscales peuvent modifier ces paramètres en cours de partie (voir le journal).</p><div class="scroll"><table class="t compact cmp"><thead><tr><th></th>${ks.map(k => `<th class="num">${CO(k).f}<br>${k}</th>`).join('')}</tr></thead><tbody>
+  ${row('IS', C => pct(C.is, 0))}${row('Charges patron.', C => pct(C.cs, 0))}${row('TVA', C => pct(C.tva, 0))}${row('Dividendes', C => pct(C.div, 0))}${row('Fortune', C => C.wt ? pct(C.wt.r) : '—')}${row('Mutation immo', C => pct(C.mut, 1))}${row('Bureaucratie', C => '×' + C.bur)}${row('Prime crédit', (C, k) => pct(C.spr + (G.spreadAdj[k] || 0), 1))}${row('Licenciement', C => C.sev + ' m')}${row('Salaires', C => '×' + C.wage)}${row('Rdt locatif', C => pct(C.yield, 1))}
+  </tbody></table></div></section>
+  <div class="grid g3"><section class="card"><h2>Impôts payés en ${dateOf(G.day).getUTCFullYear()}</h2><div class="kv"><span>Impôt sur les sociétés</span><b>${eur(G.ytd.is)}</b></div><div class="kv"><span>Impôt sur les dividendes</span><b>${eur(G.ytd.div)}</b></div><div class="kv"><span>Impôt sur la fortune</span><b>${eur(G.ytd.wealth)}</b></div><div class="kv"><span>Redressements</span><b>${eur(G.ytd.other)}</b></div>
+  <h3>Depuis le début</h3><div class="kv"><span>Total</span><b>${eur(G.tot.is + G.tot.div + G.tot.wealth + G.tot.other)}</b></div>
+  <h3>Déficits reportables</h3>${Object.entries(G.carry).filter(([k, v]) => v < 0).map(([k, v]) => `<div class="kv"><span>${CO(k).f} ${CO(k).n}</span><b>${eur(v)}</b></div>`).join('') || '<p class="muted small">Aucun</p>'}</section>
+  <section class="card span2"><h2>Fiches pays</h2><div class="sheets">${ks.map(k => `<details><summary>${CO(k).f} ${CO(k).n}</summary>${countrySheet(k)}</details>`).join('')}</div></section></div>`;
+};
+
+/* --- Classement */
+function rankList() { return [...G.rivals.map(r => ({ n: r.n, c: r.c, nw: r.nw })), { n: G.name, c: G.resCity, nw: netWorth(), me: true }].sort((a, b) => b.nw - a.nw); }
+PAGES.classement = () => `<section class="card"><h2>Classement des fortunes européennes</h2><table class="t rank"><thead><tr><th>#</th><th>Entrepreneur</th><th>Base</th><th class="num">Fortune nette</th></tr></thead><tbody>${rankList().map((r, i) => `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}</td><td><b>${esc(r.n)}</b>${r.me ? ' ' + pill('Vous', 'info') : ''}</td><td>${CO(CITY[r.c].c).f} ${CITY[r.c].n}</td><td class="num">${eur(r.nw)}</td></tr>`).join('')}</tbody></table><p class="muted small">Les rivaux investissent, se trompent et rachètent les affaires que vous laissez passer.</p></section>`;
+
+/* --- Journal */
+PAGES.journal = () => {
+  const f = UI.jf, L = G.log.filter(l => f === 'all' || l.t === f);
+  return `<section class="card"><h2>Journal</h2><div class="seg">${[['all', 'Tout'], ['bad', 'Incidents'], ['good', 'Succès'], ['info', 'Infos']].map(([k, n]) => `<button class="${f === k ? 'on' : ''}" onclick="A.jf('${k}')">${n}</button>`).join('')}</div><ul class="feed long">${L.slice(0, 300).map(l => `<li class="${l.t}"><span>${sdate(l.d)}</span>${esc(l.x)}</li>`).join('')}</ul></section>`;
+};
+
+/* ==========================================================================
+   ACTIONS
+   ========================================================================== */
+const A = {
+  go(p) { UI.page = p; render(); window.scrollTo(0, 0); },
+  city(id) { UI.city = id; UI.page = 'ville'; render(); window.scrollTo(0, 0); },
+  bizd(id) { UI.biz = id; UI.page = 'bizd'; render(); window.scrollTo(0, 0); },
+  start() {
+    const cap = +$('#s_cap').value;
+    newGame({ name: $('#s_name').value.trim() || 'Vous', nat: $('#s_nat').value, resCity: $('#s_res').value, holdC: $('#s_hold').value, capital: cap, diff: cap });
+    UI.page = 'dash'; render(); save(); A.help();
+  },
+  continue() { if (load()) { UI.page = 'dash'; render(); } },
+  reset() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } G = null; closeModal(); render(); },
+  adv(n) {
+    if (!G || G.over) return;
+    if (G.pending.length) { toast('Répondez d\'abord aux décisions en attente.', true); UI.page = 'dash'; render(); return; }
+    for (let i = 0; i < n; i++) { nextDay(); if (G.pending.length || G.over) break; }
+    if (G.pending.length) UI.page = 'dash';
+    render(); save();
+  },
+  decide(id, i) { resolveDecision(id, i); render(); save(); },
+  buy(lid) {
+    const L = G.listings.find(x => x.lid === lid); if (!L) return;
+    UI.buy = { lid, pct: L.kind === 'land' ? .6 : L.kind === 're' ? .7 : .5, months: L.kind === 'land' ? 36 : L.kind === 're' ? 240 : 84, fixed: true, ptype: L.allowed ? L.allowed[L.allowed.length - 1] : null };
+    // propose d'emblée le financement maximal que la banque accepte
+    const ci = CITY[L.city];
+    for (let p = UI.buy.pct; p > 0; p = Math.round((p - .05) * 100) / 100) {
+      let q;
+      if (L.kind === 'biz') q = loanQuote({ type: 'biz', amount: p * L.price, months: UI.buy.months, fixed: true, value: L.price, income: L.estE, country: ci.c });
+      else if (L.kind === 're') q = loanQuote({ type: 're', amount: p * L.price, months: UI.buy.months, fixed: true, value: Math.min(L.price, propValue(L.p)), income: propNetMonthly(L.p), country: ci.c });
+      else break;
+      UI.buy.pct = p; if (q.ok) break; UI.buy.pct = 0;
+    }
+    modal(buyHtml(), true);
+  },
+  buyUpd(full) {
+    const B = UI.buy; B.pct = +$('#b_pct').value; B.months = +$('#b_m').value; B.fixed = $('#b_fx').value === '1'; if ($('#b_type')) B.ptype = $('#b_type').value;
+    $('#modal .mbox').innerHTML = buyHtml();
+  },
+  buyGo() {
+    const B = UI.buy, L = G.listings.find(x => x.lid === B.lid); if (!L) return closeModal();
+    const C = CO(CITY[L.city].c);
+    let base = L.kind === 'land' ? (L.price * (1 + C.mut) + landRef(CITY[L.city], B.ptype, L.m2).build) : L.price;
+    const amount = Math.round(B.pct * base / 1000) * 1000;
+    const err = acquireListing(L, { amount, months: B.months, fixed: B.fixed, ptype: B.ptype });
+    if (err) return toast(err, true);
+    closeModal(); toast('Acquisition signée.'); render(); save();
+  },
+  price(id, v) { const b = G.biz.find(x => x.id === id); b.price = v; render(); },
+  mk(id) { const b = G.biz.find(x => x.id === id), c = mkCost(b); if (G.hold < c) return toast('Trésorerie insuffisante', true); G.hold -= c; G.tb[CITY[b.city].c] = (G.tb[CITY[b.city].c] || 0) - c; b.mk = G.day + 30; news('info', `📣 Campagne marketing lancée pour ${b.name} (${eur(c)}).`); render(); },
+  renov(id) { const b = G.biz.find(x => x.id === id), c = renovCost(b); if (G.hold < c) return toast('Trésorerie insuffisante', true); G.hold -= c; b.cond = 100; b.rep = Math.min(100, b.rep + 5); b.closedUntil = Math.max(b.closedUntil, G.day + 14); b.val += c * .5; news('info', `🛠️ Rénovation de ${b.name} (${eur(c)}) : fermeture 14 jours.`); render(); },
+  expand(id) { const b = G.biz.find(x => x.id === id), c = expandCost(b); if (G.hold < c) return toast('Trésorerie insuffisante', true); G.hold -= c; b.size++; b.cost += c; b.val += c * .8; b.closedUntil = Math.max(b.closedUntil, G.day + 30); news('info', `🏗️ Agrandissement de ${b.name} (${eur(c)}) : fermeture 30 jours. Pensez à recruter.`); render(); },
+  ins(id) { const b = G.biz.find(x => x.id === id); b.insured = !b.insured; render(); },
+  sellBiz(id) {
+    const b = G.biz.find(x => x.id === id), offer = Math.round(bizValue(b) * rnd(.88, 1.04) / 1000) * 1000, debt = loansOn({ k: 'biz', id });
+    modal(`<h2>Céder ${esc(b.name)}</h2><p>Un acquéreur propose <b>${eur(offer)}</b>. Frais de cession 4 %. Prêts adossés remboursés : ${eur(debt)}. Plus-value imposable : ${eur(offer * .96 - b.cost)}.</p><div class="row end"><button class="ghost" onclick="closeModal()">Refuser</button><button class="primary" onclick="A.sellBizGo('${id}',${offer})">Accepter</button></div>`);
+  },
+  sellBizGo(id, offer) { const b = G.biz.find(x => x.id === id); if (b) sellBiz(b, offer); closeModal(); UI.page = 'biz'; render(); save(); },
+  staff(id, r, d) {
+    const b = G.biz.find(x => x.id === id), C = CO(CITY[b.city].c), sal = roleInfo(b, r)[2] * C.wage;
+    if (d > 0) { G.hold -= sal * .5; b.staff[r] = (b.staff[r] || 0) + 1; }
+    else if ((b.staff[r] || 0) > 0) { G.hold -= sal * C.sev; b.staff[r]--; if (R() < .15 * C.sev / 2) { const f = sal * 6; G.hold -= f; news('bad', `⚖️ Contestation du licenciement aux prud'hommes (${b.name}) : ${eur(f)}.`); } }
+    render();
+  },
+  staffFit(id) {
+    const b = G.biz.find(x => x.id === id), req = staffReq(b), C = CO(CITY[b.city].c); let cost = 0;
+    for (const r in req) { const d = req[r] - (b.staff[r] || 0), sal = roleInfo(b, r)[2] * C.wage; cost += d > 0 ? d * sal * .5 : -d * sal * C.sev; b.staff[r] = req[r]; }
+    for (const r in b.staff) if (!(r in req)) { cost += b.staff[r] * roleInfo(b, r)[2] * C.wage * C.sev; delete b.staff[r]; }
+    G.hold -= cost; toast(`Effectifs ajustés (coût ${eur(cost)})`); render();
+  },
+  dirCands(id) {
+    const b = G.biz.find(x => x.id === id), c = CITY[b.city].c;
+    UI.dirC = [genDirector(c), genDirector(c), genDirector(c, 1.15)];
+    modal(`<h2>Recruter un directeur — ${esc(b.name)}</h2><p class="muted small">Le cabinet de chasse facture 3 mois de salaire. Un profil « Véreux » peut détourner des fonds.</p><table class="t">${UI.dirC.map((d, i) => `<tr><td><b>${esc(d.n)}</b><span class="muted small"> · ${esc(d.trait)}</span></td><td class="num">Compétence ${d.skill}</td><td class="num">${eur(d.sal)}/mois</td><td><button class="mini primary" onclick="A.hireDir('${id}',${i})">Recruter</button></td></tr>`).join('')}</table><div class="row end"><button class="ghost" onclick="closeModal()">Fermer</button></div>`);
+  },
+  hireDir(id, i) { const b = G.biz.find(x => x.id === id), d = UI.dirC[i]; G.hold -= d.sal * 3; if (b.dir) G.hold -= b.dir.sal * CO(CITY[b.city].c).sev; b.dir = d; news('info', `👔 ${d.n} prend la direction de ${b.name}.`); closeModal(); render(); },
+  fireDir(id) { const b = G.biz.find(x => x.id === id); G.hold -= b.dir.sal * CO(CITY[b.city].c).sev * 1.5; news('info', `${b.dir.n} quitte la direction de ${b.name}.`); b.dir = null; render(); },
+  addYacht(id) { const b = G.biz.find(x => x.id === id), m = +$('#y_m').value, Y = YACHTS[m]; if (G.hold < Y.v) return toast('Trésorerie insuffisante', true); G.hold -= Y.v; b.fleet.push({ id: uid(), m, v: Y.v }); b.cost += Y.v; news('good', `🛥️ Nouveau ${Y.n} dans la flotte de ${b.name}. Recrutez l'équipage.`); render(); },
+  sellYacht(id, yid) { const b = G.biz.find(x => x.id === id), y = b.fleet.find(x => x.id === yid); if (b.fleet.length <= 1) return toast('Gardez au moins un yacht ou cédez la société.', true); G.hold += y.v * .92; b.fleet = b.fleet.filter(x => x !== y); render(); },
+  sellProp(id, mode) { const p = G.props.find(x => x.id === id); sellProp(p, mode); render(); save(); },
+  renovProp(id) { const p = G.props.find(x => x.id === id), c = p.m2 * 450 * cityPrice(CITY[p.city]) * (1 - p.cond / 100) * 2; if (G.hold < c) return toast('Trésorerie insuffisante', true); G.hold -= c; p.cond = 100; p.cost += c; news('info', `🛠️ Rénovation de ${p.name} : ${eur(c)}.`); render(); },
+  loanUpd() {
+    const L = UI.loan, t = $('#l_type').value; const changed = t !== L.type; L.type = t;
+    if ($('#l_col')) L.col = $('#l_col').value; L.amount = +$('#l_amt').value; L.months = Math.min(+$('#l_m').value, LOANT[t].max); L.fixed = $('#l_fx').value === '1';
+    if (changed) { L.col = ''; render(); } else $('#l_quote').innerHTML = loanFormQuote();
+  },
+  loanGo() { const o = loanFormObj(); const q = loanQuote(o); if (!q.ok) return; createLoan(o, q, LOANT[o.type].n); toast('Prêt signé, fonds versés sur la holding.'); render(); save(); },
+  repay(id) { const l = G.loans.find(x => x.id === id); const pen = (l.fixed ? .03 : .01) * l.rem; if (G.hold < l.rem + pen) return toast(`Il faut ${eur(l.rem + pen)} de trésorerie (indemnité incluse).`, true); repayLoan(l, l.rem); toast(`Prêt remboursé (indemnité ${eur(pen)}).`); render(); },
+  div() { const a = +$('#d_amt').value; if (!(a > 0) || a > G.hold) return toast('Montant invalide ou trésorerie insuffisante', true); payDividend(a); render(); },
+  contrib() { const a = +$('#c_amt').value; if (!(a > 0) || a > G.perso) return toast('Montant invalide', true); contribute(a); render(); },
+  trade(t, sign) { const q = Math.floor(+$('#q_' + t).value); if (!(q > 0)) return; if (!tradeStock(t, sign * q)) return toast('Ordre refusé (trésorerie ?)', true); toast('Ordre exécuté.'); render(); },
+  hireExec(k, i) { const c = G.cands[k][i]; if (G.execs[k]) G.hold -= G.execs[k].sal * .5; G.hold -= c.sal * .25; G.execs[k] = c; G.cands[k].splice(i, 1); news('info', `👔 ${c.n} rejoint la holding : ${EXECS[k].n}.`); render(); },
+  fireExec(k) { G.hold -= G.execs[k].sal * .5; news('info', `${G.execs[k].n} quitte le groupe.`); delete G.execs[k]; render(); },
+  luxCat(c) { UI.luxCat = c; render(); },
+  buyLux(i) { const L = LUX[i]; if (G.perso < L.p) return toast('Compte personnel insuffisant : versez-vous un dividende.', true); G.perso -= L.p; G.lux.push({ id: uid(), i, v: L.p, d: G.day }); news('good', `💎 Achat : ${L.n} (${eur(L.p)}).`); render(); },
+  sellLux(id) { const x = G.lux.find(y => y.id === id); G.perso += x.v * .9; G.lux = G.lux.filter(y => y !== x); news('info', `Revente : ${LUX[x.i].n} pour ${eur(x.v * .9)}.`); render(); },
+  resPrev() { UI.resTo = $('#r_city').value; $('#r_prev').innerHTML = resPreview(UI.resTo); },
+  move(to) {
+    const r = residencyCalc(to); if (r.err) return;
+    G.perso -= 50000 + r.exit; if (r.exit) { G.tot.other += r.exit; G.ytd.other += r.exit; }
+    if (CITY[G.resCity].c === 'MC' && CITY[to].c !== 'MC') { G.perso += G.monacoDep; G.monacoDep = 0; }
+    if (r.mc) { G.perso -= 500000; G.monacoDep = 500000; }
+    G.resCity = to; G.flatIT = false; UI.resTo = null;
+    news('info', `✈️ Nouvelle résidence fiscale : ${CITY[to].n}.${r.exit ? ` Exit tax payée : ${eur(r.exit)}.` : ''}`);
+    render(); save();
+  },
+  flatIT() { G.flatIT = !G.flatIT; render(); },
+  jf(f) { UI.jf = f; render(); },
+  help() {
+    modal(`<h2>Guide du jeu</h2><div class="help">
+    <p><b>Principe.</b> Chaque clic sur « Jour suivant » fait tourner l'économie d'une journée : vos établissements encaissent leur chiffre d'affaires, paient salaires et loyers, les marchés bougent, des incidents surviennent. Le 1<sup>er</sup> de chaque mois : loyers, échéances bancaires, impôt sur les sociétés, décisions de la BCE.</p>
+    <p><b>Deux poches.</b> Votre <i>holding</i> détient les entreprises, l'immobilier et les titres. Votre <i>compte personnel</i> paie votre train de vie, vos biens de luxe et vos impôts personnels. Passer de l'une à l'autre coûte un impôt sur les dividendes qui dépend de votre résidence fiscale.</p>
+    <p><b>Acheter.</b> Ouvrez la carte, choisissez une ville, étudiez une opportunité. La banque finance une partie si votre capacité de remboursement (DSCR ≥ 1,20), votre apport (LTV) et votre score le permettent. Les droits de mutation dépendent du pays.</p>
+    <p><b>Gérer.</b> Un établissement sans directeur ou en sous-effectif perd en qualité, en réputation puis en chiffre d'affaires. Les agents d'entretien protègent l'état des locaux, la sécurité protège les clubs des fermetures.</p>
+    <p><b>Promotion immobilière.</b> Achetez un terrain, choisissez le programme, attendez le permis (lent en Italie, rapide en Suisse), financez les travaux par un crédit promoteur, puis vendez ou louez à la livraison.</p>
+    <p><b>Risques.</b> Récessions, krachs, pandémies, crises immobilières, réformes fiscales, contrôles fiscaux, grèves, incendies. Trois impayés et la banque saisit la garantie, puis votre caution personnelle. Patrimoine négatif sans revenus : faillite.</p>
+    <p><b>Raccourci.</b> Touche N : jour suivant.</p></div><div class="row end"><button class="primary" onclick="closeModal()">Commencer</button></div>`, true);
+  },
+  saveMenu() {
+    let s = ''; try { s = btoa(unescape(encodeURIComponent(JSON.stringify(G)))); } catch (e) { }
+    modal(`<h2>Sauvegarde</h2><p class="muted small">La partie est enregistrée automatiquement dans ce navigateur. Pour la transférer, copiez ce code et collez-le dans « Importer une sauvegarde ».</p><textarea id="sv" rows="6" readonly>${s}</textarea><div class="row end"><button onclick="A.copySave()">Copier le code</button><button class="danger" onclick="A.reset()">Abandonner et recommencer</button><button class="primary" onclick="closeModal()">Fermer</button></div>`);
+  },
+  copySave() { try { navigator.clipboard.writeText($('#sv').value).then(() => toast('Code copié.'), () => toast('Copie refusée : sélectionnez le texte manuellement.', true)); } catch (e) { toast('Copie impossible ici.', true); } },
+  import() { modal(`<h2>Importer une sauvegarde</h2><textarea id="imp" rows="6" placeholder="Collez le code ici"></textarea><div class="row end"><button class="ghost" onclick="closeModal()">Annuler</button><button class="primary" onclick="A.importGo()">Importer</button></div>`); },
+  importGo() { try { G = JSON.parse(decodeURIComponent(escape(atob($('#imp').value.trim())))); closeModal(); UI.page = 'dash'; render(); save(); } catch (e) { toast('Code invalide.', true); } },
+};
+window.A = A; window.closeModal = closeModal;
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#modal').className === 'open' && G && !G.over) closeModal();
+  if ((e.key === 'n' || e.key === 'N') && G && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) && $('#modal').className !== 'open') A.adv(1);
+});
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal' && G && !G.over) closeModal(); });
+render();
+
+</script>
+</body>
+</html>
